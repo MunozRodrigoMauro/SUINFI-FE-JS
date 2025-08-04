@@ -1,0 +1,20 @@
+// src/routes/PrivateRoute.jsx
+import React from "react"
+import { Navigate } from "react-router-dom"
+import { useAuth } from "../context/AuthContext"
+
+// Este componente protege rutas según el rol requerido
+function PrivateRoute({ children, role }) {
+  const { user } = useAuth()
+
+  // No logueado
+  if (!user) return <Navigate to="/login" replace />
+
+  // Logueado pero con rol incorrecto
+  if (role && user.role !== role) return <Navigate to="/" replace />
+
+  // Logueado y con rol correcto
+  return children
+}
+
+export default PrivateRoute
