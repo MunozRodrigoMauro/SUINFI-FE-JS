@@ -1,33 +1,56 @@
 // src/pages/RegisterPage.jsx
 import React, { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { registerUser } from "../api/userService"
+import { useAuth } from "../context/AuthContext"
 
 function RegisterPage() {
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [role, setRole] = useState("client") // 👈 valor por defecto
+  const [role, setRole] = useState("user") // 👈 ahora sí, válido para backend
+  const [error, setError] = useState([])
   const navigate = useNavigate()
+  const { login } = useAuth()
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
 
-    // Acá enviaríamos a la API real (simulado por ahora)
-    const newUser = {
-      email,
-      password,
-      role, // 👈 lo guardamos con su rol
+    try {
+      const response = await registerUser({ name, email, password, role })
+
+      // Login automático con el nuevo usuario
+      await login({ email, password })
+
+      navigate(`/dashboard/${role}`)
+    } catch (err) {
+      console.error("❌ Error al registrar:", err)
+
+      if (err.response && err.response.data?.errors) {
+        const messages = err.response.data.errors.map(e => e.msg)
+        setError(messages)
+      } else if (err.response?.data?.message) {
+        setError([err.response.data.message])
+      } else {
+        setError(["No se pudo registrar. Intente más tarde."])
+      }
     }
-
-    console.log("Usuario registrado:", newUser)
-    // Luego podrías guardar en localStorage, context, etc
-
-    navigate("/login")
   }
 
   return (
     <div className="max-w-md mx-auto mt-20 p-6 bg-white shadow rounded-md">
       <h2 className="text-2xl font-bold mb-6 text-center text-gray-900">Crear cuenta</h2>
+      
       <form onSubmit={handleSubmit} className="space-y-4">
+        <input
+          type="text"
+          placeholder="Nombre"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          className="w-full border px-4 py-2 rounded"
+        />
+
         <input
           type="email"
           placeholder="Correo"
@@ -46,15 +69,24 @@ function RegisterPage() {
           className="w-full border px-4 py-2 rounded"
         />
 
-        {/* Selector de rol */}
         <select
           value={role}
           onChange={(e) => setRole(e.target.value)}
           className="w-full border px-4 py-2 rounded bg-white"
         >
-          <option value="client">👤 Soy Cliente</option>
+          <option value="admin">👑 Soy Admin</option>
+          <option value="user">👤 Soy Cliente</option>
           <option value="professional">🔧 Soy Profesional</option>
         </select>
+
+        {/* Mostrar errores si hay */}
+        {error.length > 0 && (
+          <ul className="text-red-500 text-sm space-y-1">
+            {error.map((msg, i) => (
+              <li key={i}>{msg}</li>
+            ))}
+          </ul>
+        )}
 
         <button
           type="submit"

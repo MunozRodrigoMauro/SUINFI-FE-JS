@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext"
 import ReservationCard from "../components/ReservationCard"
 import ChatPreviewCard from "../components/ChatPreviewCard"
 
-function ClientDashboard() {
+function UserDashboard() {
   const { user } = useAuth()
 
   return (
@@ -88,13 +88,13 @@ function ClientDashboard() {
           <h2 className="text-2xl font-bold mb-4">📋 Reservas recientes</h2>
           <div className="grid md:grid-cols-2 gap-6">
             <ReservationCard
-              client="Juan García"
+              user="Juan García"
               service="Electricista"
               date="2025-08-15"
               status="confirmado"
             />
             <ReservationCard
-              client="Carla Pérez"
+              user="Carla Pérez"
               service="Plomero"
               date="2025-08-10"
               status="pendiente"
@@ -124,4 +124,4 @@ function ClientDashboard() {
   )
 }
 
-export default ClientDashboard
+export default UserDashboard

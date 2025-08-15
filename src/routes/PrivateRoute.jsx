@@ -4,14 +4,17 @@ import { Navigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 
 // Este componente protege rutas según el rol requerido
-function PrivateRoute({ children, role }) {
-  const { user } = useAuth()
+function PrivateRoute({ children, allowedRoles }) {
+  const { user, loading } = useAuth()
+
+  // Cargando sesión
+  if (loading) return <p className="text-center mt-10">Verificando sesión...</p>
 
   // No logueado
   if (!user) return <Navigate to="/login" replace />
 
   // Logueado pero con rol incorrecto
-  if (role && user.role !== role) return <Navigate to="/" replace />
+  if (!allowedRoles.includes(user.role)) return <Navigate to="/" replace />
 
   // Logueado y con rol correcto
   return children

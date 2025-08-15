@@ -17,7 +17,8 @@ function LoginPage() {
       const user = await login({ email, password })
   
       const roleRoute = {
-        user: "/dashboard/client",
+        admin: "/dashboard/admin",
+        user: "/dashboard/user",
         professional: "/dashboard/professional"
       }
   
