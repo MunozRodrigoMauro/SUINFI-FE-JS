@@ -1,9 +1,10 @@
 // src/pages/ProfilePage.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import Navbar from "../components/Navbar"; // <-- para asegurar que se vea
+import Navbar from "../components/layout/Navbar";
+import BackBar from "../components/layout/BackBar";
 import { updateAvailabilitySchedule, getProfessionals } from "../api/professionalService";
 import { getMyProfile, updateMyProfile } from "../api/userService";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 const DAYS = [
@@ -84,6 +85,7 @@ function DayRow({ label, active, from, to, onToggle, onChangeFrom, onChangeTo })
 export default function ProfilePage() {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
+  const isPro = user?.role === "professional";
 
   // Cuenta
   const [form, setForm] = useState({ name: "", email: "", role: "", password: "" });
@@ -93,7 +95,7 @@ export default function ProfilePage() {
   const [msgType, setMsgType] = useState("success");
   const [dirty, setDirty] = useState(false);
 
-  // Ubicación (estructurada)
+  // Ubicación
   const [addr, setAddr] = useState({
     country: "",
     state: "",
@@ -112,13 +114,13 @@ export default function ProfilePage() {
   const [savingAgenda, setSavingAgenda] = useState(false);
   const [agendaMsg, setAgendaMsg] = useState("");
 
-  // UI: secciones cerradas por defecto
+  // UI: secciones
   const [openAccount, setOpenAccount] = useState(false);
-  const [openSecurity, setOpenSecurity] = useState(false);
+  const [openSecurity] = useState(false);
   const [openAvailability, setOpenAvailability] = useState(false);
   const [openLocation, setOpenLocation] = useState(false);
 
-  // Cargar perfil básico
+  // Cargar perfil
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -132,7 +134,6 @@ export default function ProfilePage() {
           password: "",
         });
 
-        // Si ya tenés address en user (si lo guardás ahí), prefill
         setAddr((prev) => ({
           ...prev,
           country: me?.address?.country || "",
@@ -155,19 +156,18 @@ export default function ProfilePage() {
     };
   }, []);
 
-  // Prefill agenda desde profesionales (soporta array o {items})
+  // Prefill agenda desde profesionales
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const raw = await getProfessionals(); // puede ser array o objeto paginado
-        const arr = Array.isArray(raw) ? raw : (raw?.items || []);
+        const raw = await getProfessionals();
+        const arr = Array.isArray(raw) ? raw : raw?.items || [];
         if (!mounted) return;
 
         const myId = user?.id || user?._id;
         const mine = arr.find((p) => p?.user?._id === myId) || null;
 
-        // availabilitySchedule en el perfil profesional
         if (mine?.availabilitySchedule && typeof mine.availabilitySchedule === "object") {
           const map = mine.availabilitySchedule;
           setRows((prev) =>
@@ -181,7 +181,6 @@ export default function ProfilePage() {
           );
         }
 
-        // si guardás address profesional en ese doc, podés mapearlo aquí también
         if (mine?.address && typeof mine.address === "object") {
           setAddr((prev) => ({
             ...prev,
@@ -195,7 +194,7 @@ export default function ProfilePage() {
           }));
         }
       } catch {
-        // silencio: deja valores por defecto
+        /* noop */
       } finally {
         setLoadingAgenda(false);
       }
@@ -203,22 +202,20 @@ export default function ProfilePage() {
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?._id]);
 
-  // autohide alerts
   useEffect(() => {
     if (!msg) return;
     const t = setTimeout(() => setMsg(""), 2500);
     return () => clearTimeout(t);
   }, [msg]);
+
   useEffect(() => {
     if (!agendaMsg) return;
     const t = setTimeout(() => setAgendaMsg(""), 2500);
     return () => clearTimeout(t);
   }, [agendaMsg]);
 
-  // handlers
   const onChange = (e) => {
     setDirty(true);
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -228,13 +225,11 @@ export default function ProfilePage() {
     setAddr((a) => ({ ...a, [name]: value }));
   };
 
-  // Guardar cuenta + address
   const saveCommon = async () => {
     const payload = {};
     if (form.name.trim()) payload.name = form.name.trim();
     if (form.password.trim()) payload.password = form.password.trim();
 
-    // guardo address estructurada en el user (ajustá si preferís guardarla en Professional)
     payload.address = {
       country: addr.country.trim(),
       state: addr.state.trim(),
@@ -245,7 +240,7 @@ export default function ProfilePage() {
       postalCode: addr.postalCode.trim(),
     };
 
-    const res = await updateMyProfile(payload); // { user: {...} }
+    const res = await updateMyProfile(payload);
     setUser((prev) => ({ ...prev, ...res.user }));
     setForm((f) => ({ ...f, password: "" }));
     setDirty(false);
@@ -319,7 +314,6 @@ export default function ProfilePage() {
     }
   };
 
-  // Requisitos esenciales para habilitar “Ir al panel”
   const essentialsOk = useMemo(() => {
     const nameOk = form.name.trim().length >= 2;
     const addrOk =
@@ -337,15 +331,15 @@ export default function ProfilePage() {
   return (
     <>
       <Navbar />
-      <section className="min-h-screen bg-white text-[#0a0e17] pt-24 pb-24 px-4">
+      <BackBar
+        title="Mi perfil"
+        subtitle={isPro ? "Editá tu cuenta, ubicación y disponibilidad" : "Editá tu cuenta y ubicación"}
+      />
+      <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-24 px-4">
         <div className="max-w-3xl mx-auto">
-          {/* título (sin breadcrumb ni volver hasta completar) */}
           <h1 className="text-3xl font-bold mb-2">👤 Mi perfil</h1>
-          <p className="text-gray-600 mb-6">
-            Completá tus datos esenciales para poder usar la app.
-          </p>
+          <p className="text-gray-600 mb-6">Completá tus datos esenciales para poder usar la app.</p>
 
-          {/* alert general */}
           {msg && (
             <div
               className={`mb-6 rounded-lg border px-4 py-3 text-sm ${
@@ -430,7 +424,7 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* Ubicación estructurada */}
+          {/* Ubicación */}
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
             <button
               onClick={() => setOpenLocation((o) => !o)}
@@ -438,9 +432,7 @@ export default function ProfilePage() {
             >
               <div className="text-left">
                 <h2 className="text-lg font-semibold">Ubicación</h2>
-                <p className="text-sm text-gray-500">
-                  País, provincia/estado, ciudad, calle, número, CP.
-                </p>
+                <p className="text-sm text-gray-500">País, provincia/estado, ciudad, calle, número, CP.</p>
               </div>
               <Chevron open={openLocation} />
             </button>
@@ -450,71 +442,33 @@ export default function ProfilePage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">País *</label>
-                    <input
-                      name="country"
-                      value={addr.country}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <input name="country" value={addr.country} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Provincia / Estado *</label>
-                    <input
-                      name="state"
-                      value={addr.state}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <input name="state" value={addr.state} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Ciudad *</label>
-                    <input
-                      name="city"
-                      value={addr.city}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <input name="city" value={addr.city} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Código Postal *</label>
-                    <input
-                      name="postalCode"
-                      value={addr.postalCode}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <input name="postalCode" value={addr.postalCode} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div className="md:col-span-2 grid md:grid-cols-3 gap-4">
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium mb-1">Calle *</label>
-                      <input
-                        name="street"
-                        value={addr.street}
-                        onChange={onChangeAddr}
-                        className="w-full border rounded-lg px-4 py-2"
-                      />
+                      <input name="street" value={addr.street} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Número *</label>
-                      <input
-                        name="number"
-                        value={addr.number}
-                        onChange={onChangeAddr}
-                        className="w-full border rounded-lg px-4 py-2"
-                      />
+                      <input name="number" value={addr.number} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium mb-1">
-                      Depto / Piso / Unidad (opcional)
-                    </label>
-                    <input
-                      name="unit"
-                      value={addr.unit}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                      placeholder="Ej: Piso 3, Depto B"
-                    />
+                    <label className="block text-sm font-medium mb-1">Depto / Piso / Unidad (opcional)</label>
+                    <input name="unit" value={addr.unit} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" placeholder="Ej: Piso 3, Depto B" />
                   </div>
                 </div>
 
@@ -532,81 +486,83 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* Disponibilidad */}
-          <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
-            <button
-              onClick={() => setOpenAvailability((o) => !o)}
-              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
-            >
-              <div className="text-left">
-                <h2 className="text-lg font-semibold">Disponibilidad</h2>
-                <p className="text-sm text-gray-500">Configurá tus horarios (opcional)</p>
-              </div>
-              <Chevron open={openAvailability} />
-            </button>
-
-            {openAvailability && (
-              <div className="px-5 pb-5">
-                {invalids.length > 0 && (
-                  <div className="mb-4 text-sm bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg">
-                    Hay días con horario inválido (inicio debe ser menor que fin).
-                  </div>
-                )}
-                {agendaMsg && (
-                  <div
-                    className={`mb-4 text-sm px-3 py-2 rounded-lg ${
-                      agendaMsg.startsWith("✅")
-                        ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-                        : "bg-rose-50 border border-rose-200 text-rose-700"
-                    }`}
-                  >
-                    {agendaMsg}
-                  </div>
-                )}
-
-                {loadingAgenda ? (
-                  <p className="text-gray-600">Cargando tu agenda…</p>
-                ) : (
-                  <div className="space-y-3">
-                    {DAYS.map((d, idx) => (
-                      <DayRow
-                        key={d.key}
-                        label={d.label}
-                        active={rows[idx].active}
-                        from={rows[idx].from}
-                        to={rows[idx].to}
-                        onToggle={(val) => onToggle(idx, val)}
-                        onChangeFrom={(val) => onChangeFrom(idx, val)}
-                        onChangeTo={(val) => onChangeTo(idx, val)}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))
-                    }
-                    className="text-sm bg-white border px-4 py-2 rounded-lg hover:bg-gray-50"
-                  >
-                    Restablecer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onSaveAgenda}
-                    disabled={savingAgenda}
-                    className="text-sm bg-[#0a0e17] text-white px-5 py-2 rounded-lg hover:bg-black/80 disabled:opacity-60"
-                  >
-                    {savingAgenda ? "Guardando…" : "Guardar agenda"}
-                  </button>
+          {/* Disponibilidad — SOLO profesionales */}
+          {isPro && (
+            <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
+              <button
+                onClick={() => setOpenAvailability((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+              >
+                <div className="text-left">
+                  <h2 className="text-lg font-semibold">Disponibilidad</h2>
+                  <p className="text-sm text-gray-500">Configurá tus horarios (opcional)</p>
                 </div>
-              </div>
-            )}
-          </div>
+                <Chevron open={openAvailability} />
+              </button>
 
-          {/* CTA para ir al panel: bloqueado hasta essentials */}
+              {openAvailability && (
+                <div className="px-5 pb-5">
+                  {invalids.length > 0 && (
+                    <div className="mb-4 text-sm bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg">
+                      Hay días con horario inválido (inicio debe ser menor que fin).
+                    </div>
+                  )}
+                  {agendaMsg && (
+                    <div
+                      className={`mb-4 text-sm px-3 py-2 rounded-lg ${
+                        agendaMsg.startsWith("✅")
+                          ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+                          : "bg-rose-50 border border-rose-200 text-rose-700"
+                      }`}
+                    >
+                      {agendaMsg}
+                    </div>
+                  )}
+
+                  {loadingAgenda ? (
+                    <p className="text-gray-600">Cargando tu agenda…</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {DAYS.map((d, idx) => (
+                        <DayRow
+                          key={d.key}
+                          label={d.label}
+                          active={rows[idx].active}
+                          from={rows[idx].from}
+                          to={rows[idx].to}
+                          onToggle={(val) => onToggle(idx, val)}
+                          onChangeFrom={(val) => onChangeFrom(idx, val)}
+                          onChangeTo={(val) => onChangeTo(idx, val)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-3 mt-6">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))
+                      }
+                      className="text-sm bg-white border px-4 py-2 rounded-lg hover:bg-gray-50"
+                    >
+                      Restablecer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onSaveAgenda}
+                      disabled={savingAgenda}
+                      className="text-sm bg-[#0a0e17] text-white px-5 py-2 rounded-lg hover:bg-black/80 disabled:opacity-60"
+                    >
+                      {savingAgenda ? "Guardando…" : "Guardar agenda"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* CTA */}
           <div className="mt-8 flex justify-end">
             <button
               onClick={() => navigate("/dashboard/professional")}

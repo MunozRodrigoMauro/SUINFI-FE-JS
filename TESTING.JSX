@@ -1,7 +1,7 @@
 import React from "react"
-import { useAuth } from "../context/AuthContext"
-import ReservationCard from "../components/ReservationCard"
-import ChatPreviewCard from "../components/ChatPreviewCard"
+import { useAuth } from "../auth/AuthContext"
+import ReservationCard from "../components/booking/ReservationCard"
+import ChatPreviewCard from "../components/chat/ChatPreviewCard"
 
 function UserDashboard() {
   const { user } = useAuth()

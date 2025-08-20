@@ -1,7 +1,7 @@
 // src/routes/PrivateRoute.jsx
 import React from "react"
 import { Navigate } from "react-router-dom"
-import { useAuth } from "../context/AuthContext"
+import { useAuth } from "../auth/AuthContext"
 
 // Este componente protege rutas según el rol requerido
 function PrivateRoute({ children, allowedRoles }) {

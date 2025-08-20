@@ -1,14 +1,20 @@
-// src/pages/UserDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
-import ReservationCard from "../components/ReservationCard";
-import ChatPreviewCard from "../components/ChatPreviewCard";
+import ChatPreviewCard from "../components/chat/ChatPreviewCard";
 import { getProfessionals } from "../api/professionalService";
+import { getMyBookings } from "../api/bookingService";
+import BookingStatusBadge from "../components/booking/BookingStatusBadge";
+import { formatDateTime } from "../utils/datetime";
 import axiosUser from "../api/axiosUser";
 import { socket } from "../lib/socket"; // ✅ singleton
+import { fetchMyChats } from "../api/chatService";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+
+// clave para persistir filtros
+const LS_KEY = "suinfi:userdash:filters";
+const RECENT_LIMIT = 2;
 
 function UserDashboard() {
   const { user } = useAuth();
@@ -31,7 +37,31 @@ function UserDashboard() {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const limit = 12;
+  const limit = 3;
+
+  // 🆕 reservas recientes (reales)
+  const [recent, setRecent] = useState([]);
+  const [loadingRecent, setLoadingRecent] = useState(true);
+
+  // ───────────────────────────────────────────────────────────────
+  // Persistencia de filtros en localStorage
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+      if (saved && typeof saved === "object") {
+        if (saved.categoryId) setCategoryId(saved.categoryId);
+        if (saved.serviceId) setServiceId(saved.serviceId);
+        if (typeof saved.availableNow === "boolean") setAvailableNow(saved.availableNow);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const payload = { categoryId, serviceId, availableNow };
+    localStorage.setItem(LS_KEY, JSON.stringify(payload));
+  }, [categoryId, serviceId, availableNow]);
+  // ───────────────────────────────────────────────────────────────
 
   // cargar combos
   useEffect(() => {
@@ -99,9 +129,9 @@ function UserDashboard() {
 
   const displayName = (u) => u?.name || u?.email?.split("@")[0] || "Usuario";
 
-  // 🔴 LIVE: actualizar catálogo en tiempo real ante cambios de disponibilidad
+  // 🔴 LIVE catálogo: actualizar en tiempo real ante cambios de disponibilidad
   useEffect(() => {
-    if (!socket) return; // ✅ evita "socket is not defined"
+    if (!socket) return;
 
     const handler = () => fetchCatalog(page);
     const onConnect = () => fetchCatalog(page);
@@ -118,18 +148,45 @@ function UserDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
+  // 🆕 Reservas recientes (reales) + LIVE por socket booking
+  const fetchRecent = async () => {
+    setLoadingRecent(true);
+    try {
+      const list = await getMyBookings();
+      const safe = Array.isArray(list) ? list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : [];
+      setRecent(safe.slice(0, RECENT_LIMIT));
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRecent();
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onCreated = () => fetchRecent();
+    const onUpdated = () => fetchRecent();
+    socket.on("booking:created", onCreated);
+    socket.on("booking:updated", onUpdated);
+    return () => {
+      socket.off("booking:created", onCreated);
+      socket.off("booking:updated", onUpdated);
+    };
+  }, []);
+
+  const [recentChats, setRecentChats] = useState([]);
+  useEffect(() => { (async () => setRecentChats(await fetchMyChats()))(); }, []);
+
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] pt-24 pb-20 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-6">
-          <h1 className="text-4xl font-bold mb-2">🎯 Panel del Cliente</h1>
-          <p className="text-lg text-gray-700">
-            Bienvenido,{" "}
-            <span className="text-[#0a0e17] font-semibold">
-              {displayName(user)}
-            </span>.
-          </p>
+          <h1 className="text-4xl font-bold mb-2">
+          🎯 Cliente: {displayName(user).charAt(0).toUpperCase() + displayName(user).slice(1)}
+          </h1> 
         </div>
 
         {/* Filtros */}
@@ -163,25 +220,11 @@ function UserDashboard() {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Disponibilidad</label>
-              <button
-                onClick={() => setAvailableNow((v) => !v)}
-                className={`w-full px-3 py-2 rounded border transition ${
-                  availableNow
-                    ? "bg-emerald-500 border-emerald-600 text-white"
-                    : "bg-white text-black border-gray-300"
-                }`}
-              >
-                {availableNow ? "✅ Solo disponibles ahora" : "Todos"}
-              </button>
-            </div>
-
             <div className="flex gap-2">
               <button
                 onClick={() => fetchCatalog(1)}
                 disabled={loading}
-                className={`px-4 py-2 rounded-lg border ${
+                className={`px-4 py-2 rounded-lg border cursor-pointer ${
                   loading
                     ? "opacity-60 cursor-wait"
                     : "bg-white hover:bg-gray-100 text-black"
@@ -195,7 +238,7 @@ function UserDashboard() {
                   setServiceId("");
                   setAvailableNow(false);
                 }}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 cursor-pointer"
               >
                 Limpiar
               </button>
@@ -236,6 +279,7 @@ function UserDashboard() {
               const servicesNames = (p.services || []).map(s => s?.name).filter(Boolean);
               const firstService = servicesNames[0] || "Servicio";
               const restCount = Math.max(0, servicesNames.length - 1);
+              const peerUserId = p?.user?._id; // 👈 ESTE es el id correcto para chat
 
               return (
                 <div
@@ -281,11 +325,17 @@ function UserDashboard() {
                       )}
                     </div>
 
-                    {/* Botón alineado a la derecha */}
-                    <div className="mt-4 flex justify-end">
+                    {/* Botones alineados a la derecha */}
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button
+                        onClick={() => navigate(`/chats/${p?.user?._id}`)}
+                        className="text-sm font-medium bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
+                      >
+                        Chatear
+                      </button>
                       <button
                         onClick={() => navigate(`/professional/${p._id}?reserve=1`)}
-                        className="text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-md shadow-sm transition-colors duration-150 cursor-pointer"
+                        className="text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-md shadow-sm cursor-pointer"
                       >
                         Reservar
                       </button>
@@ -303,7 +353,7 @@ function UserDashboard() {
             <button
               disabled={page <= 1}
               onClick={() => fetchCatalog(page - 1)}
-              className={`px-3 py-1 rounded border ${
+              className={`px-3 py-1 rounded border cursor-pointer ${
                 page <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
               }`}
             >
@@ -313,7 +363,7 @@ function UserDashboard() {
             <button
               disabled={page >= pages}
               onClick={() => fetchCatalog(page + 1)}
-              className={`px-3 py-1 rounded border ${
+              className={`px-3 py-1 rounded border cursor-pointer ${
                 page >= pages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
               }`}
             >
@@ -322,20 +372,87 @@ function UserDashboard() {
           </div>
         )}
 
-        {/* Tu contenido existente */}
+        {/* 🆕 Reservas recientes reales */}
         <div className="text-left mb-16">
-          <h2 className="text-2xl font-bold mb-4">📋 Reservas recientes</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            <ReservationCard user="Juan García" service="Electricista" date="2025-08-15" status="confirmado" />
-            <ReservationCard user="Carla Pérez" service="Plomero" date="2025-08-10" status="pendiente" />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold">📋 Reservas recientes</h2>
+            <button
+              onClick={() => navigate("/bookings")}
+              className="text-sm px-3 py-1.5 rounded-md bg-slate-800 text-white hover:bg-black cursor-pointer"
+            >
+              Ver todas
+            </button>
           </div>
+
+          {loadingRecent ? (
+            <p className="text-gray-600">Cargando…</p>
+          ) : recent.length === 0 ? (
+            <div className="border rounded-xl p-6 bg-white">
+              <p className="text-gray-600 mb-3">Aún no tenés reservas.</p>
+              <button
+                onClick={() => navigate("/dashboard/user")}
+                className="text-sm px-3 py-1.5 rounded bg-amber-500 text-white hover:bg-amber-600"
+              >
+                Buscar profesionales
+              </button>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-6">
+              {recent.map((b) => (
+                <div
+                  key={b._id}
+                  className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition"
+                  onClick={() => {
+                    const peerId = b?.professional?.user?._id;
+                    if (peerId) navigate(`/chats/${peerId}`);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      const peerId = b?.professional?.user?._id;
+                      if (peerId) navigate(`/chats/${peerId}`);
+                    }
+                  }}
+                  title="Abrir chat con el profesional"
+                >
+                  {/* contenido interno igual */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold leading-5">
+                        {b?.professional?.user?.name || b?.professional?.user?.email || "Profesional"}
+                      </div>
+                      <div className="text-sm text-gray-700">{b?.service?.name || "Servicio"}</div>
+                      <div className="text-sm text-gray-600">{formatDateTime(b?.scheduledAt)}</div>
+                    </div>
+                    <BookingStatusBadge status={b?.status} />
+                  </div>
+                  {b?.note && (
+                    <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
+                      {b.note}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
+        {/* 💬 Chats recientes */}
         <div className="text-left">
           <h2 className="text-2xl font-bold mb-4">💬 Chats recientes</h2>
           <div className="grid md:grid-cols-2 gap-6">
-            <ChatPreviewCard name="Marcelo López" lastMessage="¿En qué horario estarías disponible?" time="hace 1 hora" />
-            <ChatPreviewCard name="Lautaro Peña" lastMessage="Perfecto, te agendo para mañana." time="hace 3 horas" />
+            {recentChats.length === 0 ? (
+              <p className="text-gray-600">Aún no tenés chats.</p>
+            ) : recentChats.map((c) => (
+              <ChatPreviewCard
+                key={c._id}
+                name={c?.otherUser?.name || c?.otherUser?.email || "Usuario"}
+                lastMessage={c?.lastMessage?.text || "—"}
+                time={c?.lastMessage?.createdAt ? new Date(c.lastMessage.createdAt).toLocaleString() : ""}
+                peerId={c?.otherUser?._id}
+              />
+            ))}
           </div>
         </div>
       </div>

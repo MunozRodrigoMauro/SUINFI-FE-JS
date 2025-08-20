@@ -1,3 +1,4 @@
+// src/routes/index.jsx
 import React, { useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import HomePage from "../pages/HomePage";
@@ -7,17 +8,20 @@ import UserDashboard from "../pages/UserDashboard";
 import ProfessionalDashboard from "../pages/ProfessionalDashboard";
 import MainLayout from "../layouts/MainLayout";
 import PrivateRoute from "./PrivateRoute";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../auth/AuthContext";
 import AdminDashboard from "../pages/AdminDashboard";
 import ProfilePage from "../pages/ProfilePage";
 import ProfessionalAvailabilityPage from "../pages/ProfessionalAvailabilityPage";
 import ProfessionalDetailPage from "../pages/ProfessionalDetailPage";
+import BookingsPage from "../pages/BookingsPage";            // ⬅️ corregido
+import ProfessionalServicesPage from "../pages/ProfessionalServicesPage";
+import ChatsPage from "../pages/ChatsPage";
 
+ 
 function AppRoutes() {
   const { loading } = useAuth();
   const navigate = useNavigate();
 
-  // 🧭 Redirección centralizada de onboarding (escucha eventos del AuthContext)
   useEffect(() => {
     const handler = (e) => {
       const { requiresOnboarding, role } = e.detail || {};
@@ -87,7 +91,26 @@ function AppRoutes() {
       {/* Alias /catalog -> dashboard del user */}
       <Route path="/catalog" element={<Navigate to="/dashboard/user" replace />} />
 
-      {/* Perfil (protegido para todos los roles) */}
+      {/* Ruta de reservas (user y pro) */}
+      <Route
+        path="/bookings"
+        element={
+          <PrivateRoute allowedRoles={["user", "professional"]}>
+            <BookingsPage />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/dashboard/professional/services"
+        element={
+          <PrivateRoute allowedRoles={["professional"]}>
+            <ProfessionalServicesPage />
+          </PrivateRoute>
+        }
+      />
+
+      {/* Perfil */}
       <Route
         path="/profile"
         element={
@@ -96,7 +119,35 @@ function AppRoutes() {
           </PrivateRoute>
         }
       />
+
+      <Route
+        path="/messages"
+        element={
+          <PrivateRoute allowedRoles={["user","professional","admin"]}>
+            <ChatsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboard/professional/messages"
+        element={
+          <PrivateRoute allowedRoles={["professional","admin","user"]}>
+            <ChatsPage />
+          </PrivateRoute>
+        }
+      />
+        <Route
+          path="/chats/:otherUserId?"
+          element={
+            <PrivateRoute allowedRoles={["user","professional","admin"]}>
+              <ChatsPage />
+            </PrivateRoute>
+          }
+        />
+
     </Routes>
+
+    
   );
 }
 

@@ -1,14 +1,17 @@
-// src/pages/ProfessionalDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import {
   setAvailableNow,
   getAvailableNowProfessionals,
 } from "../api/professionalService";
-import { socket } from "../lib/socket"; // ✅ singleton compartido
-import ReservationCard from "../components/ReservationCard";
-import ChatPreviewCard from "../components/ChatPreviewCard";
+import { socket } from "../lib/socket";
+import ChatPreviewCard from "../components/chat/ChatPreviewCard";
+import BookingStatusBadge from "../components/booking/BookingStatusBadge";
+import BookingActions from "../components/booking/BookingActions";
+import { getBookingsForMe } from "../api/bookingService";
+import { formatDateTime } from "../utils/datetime";
+import { fetchMyChats } from "../api/chatService";
 
 function ProfessionalDashboard() {
   const { user } = useAuth();
@@ -22,7 +25,6 @@ function ProfessionalDashboard() {
   const [onlinePros, setOnlinePros] = useState([]);
   const [loadingOnline, setLoadingOnline] = useState(true);
 
-  // ---- helpers -------------------------------------------------------------
   const refetchOnline = async () => {
     try {
       setLoadingOnline(true);
@@ -43,7 +45,6 @@ function ProfessionalDashboard() {
     softMessage._t = window.setTimeout(() => setMsgNow(""), 2200);
   };
 
-  // 1) Primer fetch al montar
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -54,25 +55,21 @@ function ProfessionalDashboard() {
       mounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // id no cambia durante la sesión
+  }, []);
 
-  // 2) Suscripción a socket (ambos eventos) + refetch al conectar
   useEffect(() => {
     if (!socket) return;
 
     const onConnect = () => {
-      // reconexión o primera conexión -> garantizamos estado fresco
       refetchOnline();
     };
 
     const handler = async ({ userId, isAvailableNow: avail }) => {
-      // si soy yo -> reflejo switch
       if (userId === (user?.id || user?._id)) {
         setIsAvailableNow(!!avail);
         setLastUpdated(new Date());
         softMessage(avail ? "Ahora figurás como disponible." : "Modo disponible desactivado.");
       }
-      // re-cargar la grilla para mantener consistencia
       await refetchOnline();
     };
 
@@ -88,24 +85,19 @@ function ProfessionalDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?._id]);
 
-  // 3) Re-sync al volver a la pestaña (si pasa el tiempo del cron)
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "visible") refetchOnline();
+      if (document.visibilityState === "visible") fetchNextBookings();
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 4) Polling de respaldo cada 60s (por si cae el socket)
   useEffect(() => {
     const id = window.setInterval(refetchOnline, 60000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 5) Sync entre pestañas (si cambiás desde navbar u otra tab)
   useEffect(() => {
     const onStorage = async (e) => {
       if (e.key !== "suinfi:availabilityNow") return;
@@ -120,22 +112,18 @@ function ProfessionalDashboard() {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 6) Toggle “Disponible ahora” (UI optimista)
   const toggleNow = async () => {
     try {
       setSavingNow(true);
       const next = !isAvailableNow;
-      setIsAvailableNow(next); // optimista
-      // cross-tab hint
+      setIsAvailableNow(next);
       localStorage.setItem(
         "suinfi:availabilityNow",
         JSON.stringify({ v: next, who: (user?.id || user?._id) })
       );
       await setAvailableNow(next);
-      // el backend emite evento -> terminará de sincronizar todo
     } catch (e) {
       console.error(e);
       setIsAvailableNow((prev) => !prev);
@@ -150,26 +138,58 @@ function ProfessionalDashboard() {
     [user?.name, user?.email]
   );
 
-useEffect(() => {
-  if (!socket) return;
-  const onCreated = (payload) => {
-    // si el evento es para mí:
-    const myId = user?.id || user?._id;
-    if (!myId || payload?.professionalUserId !== myId) return;
-    console.log("🆕 Nueva reserva para vos:", payload);
-    // acá podrías refetchear tu lista de reservas si tenés una
-  };
-  const onUpdated = (payload) => {
-    console.log("🔄 Reserva actualizada:", payload);
+  useEffect(() => {
+    if (!socket) return;
+    const onCreated = (payload) => {
+      const myId = user?.id || user?._id;
+      if (!myId || payload?.professionalUserId !== myId) return;
+      fetchNextBookings();
+    };
+    const onUpdated = () => {
+      fetchNextBookings();
+    };
+    socket.on("booking:created", onCreated);
+    socket.on("booking:updated", onUpdated);
+    return () => {
+      socket.off("booking:created", onCreated);
+      socket.off("booking:updated", onUpdated);
+    };
+  }, [user?.id, user?._id]);
+
+  // Próximas reservas (reales)
+  const [nextBookings, setNextBookings] = useState([]);
+  const [loadingNext, setLoadingNext] = useState(true);
+  const RECENT_LIMIT_PRO = 3;
+
+  const fetchNextBookings = async () => {
+    setLoadingNext(true);
+    try {
+      const list = await getBookingsForMe();
+      const arr = Array.isArray(list) ? list : [];
+      const now = Date.now();
+      const futureSorted = arr
+        .filter(b => new Date(b?.scheduledAt || b?.createdAt).getTime() >= now || b?.status === "pending")
+        .sort((a, b) => new Date(a?.scheduledAt || a?.createdAt) - new Date(b?.scheduledAt || b?.createdAt));
+      setNextBookings(futureSorted.slice(0, RECENT_LIMIT_PRO));
+    } finally {
+      setLoadingNext(false);
+    }
   };
 
-  socket.on("booking:created", onCreated);
-  socket.on("booking:updated", onUpdated);
-  return () => {
-    socket.off("booking:created", onCreated);
-    socket.off("booking:updated", onUpdated);
-  };
-}, [user?.id, user?._id]);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      await refetchOnline();
+      await fetchNextBookings();
+      if (!mounted) return;
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const [recentChats, setRecentChats] = useState([]);
+  useEffect(() => { (async () => setRecentChats(await fetchMyChats()))(); }, []);
 
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] py-24 px-4">
@@ -177,10 +197,7 @@ useEffect(() => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">
           <div>
-            <h1 className="text-3xl font-bold">🔧 Panel del Profesional</h1>
-            <p className="text-gray-700">
-              Hola, <span className="font-semibold">{myName}</span>. Gestioná tus servicios y reservas.
-            </p>
+            <h1 className="text-3xl font-bold">🔧 Profesional: {myName.charAt(0).toUpperCase() + myName.slice(1)}</h1> 
           </div>
 
           <div className="flex items-center gap-3 bg-white border rounded-xl shadow-sm px-4 py-2">
@@ -230,66 +247,109 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Accesos rápidos minimalistas */}
+        {/* Accesos rápidos */}
         <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 mb-10">
           <button
             onClick={() => navigate("/profile")}
-            className="bg-[#111827] text-white p-4 rounded-xl shadow hover:shadow-lg transition text-left"
+            className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer"
           >
             ⚙️ Configuración
-            <p className="text-gray-300 text-xs mt-1">Perfil, agenda semanal y más</p>
+            <p className="text-[#111827] text-xs mt-1">Perfil, agenda semanal y más</p>
           </button>
-          <div className="bg-[#111827] text-white p-4 rounded-xl shadow">
+          <button onClick={() => navigate("/bookings")} className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer">
             📅 Reservas
-            <p className="text-gray-300 text-xs mt-1">Próximas y pendientes</p>
-          </div>
-          <div className="bg-[#111827] text-white p-4 rounded-xl shadow">
+            <p className="text-[#111827] text-xs mt-1">Próximas y pendientes</p>
+          </button>
+          <button onClick={() => navigate("/dashboard/professional/messages")} className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer">
             💬 Mensajes
-            <p className="text-gray-300 text-xs mt-1">Conversaciones recientes</p>
-          </div>
-          <div className="bg-[#111827] text-white p-4 rounded-xl shadow">
+            <p className="text-[#111827] text-xs mt-1">Conversaciones recientes</p>
+          </button>
+          <button onClick={() => navigate("/dashboard/professional/services")} className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer">
             🧰 Servicios
-            <p className="text-gray-300 text-xs mt-1">Tu oferta actual</p>
-          </div>
+            <p className="text-[#111827] text-xs mt-1">Gestioná tu oferta</p>
+          </button>
         </div>
 
-        {/* Próximas reservas (dummy) */}
+        {/* Próximas reservas */}
         <div className="mb-12">
-          <h2 className="text-2xl font-bold mb-4">📋 Próximas reservas</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            <ReservationCard
-              user="Rodrigo Fernández"
-              service="Gasista matriculado"
-              date="2025-08-05"
-              status="confirmado"
-            />
-            <ReservationCard
-              user="Elena Sánchez"
-              service="Electricista"
-              date="2025-08-09"
-              status="pendiente"
-            />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold">📋 Próximas reservas</h2>
+            <button
+              onClick={() => navigate("/bookings")}
+              className="text-sm px-3 py-1.5 rounded-md bg-slate-800 text-white hover:bg-black cursor-pointer"
+            >
+              Ver todas
+            </button>
           </div>
+
+          {loadingNext ? (
+            <p className="text-gray-600">Cargando…</p>
+          ) : nextBookings.length === 0 ? (
+            <div className="border rounded-xl p-6 bg-white">
+              <p className="text-gray-600 mb-2">No tenés reservas próximas.</p>
+              <p className="text-gray-500 text-sm">Cuando te lleguen, aparecerán acá.</p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-6">
+              {nextBookings.map((b) => {
+                const clientName = b?.client?.name || b?.client?.email || "Cliente";
+                const serviceName = b?.service?.name || "Servicio";
+                const when = formatDateTime(b?.scheduledAt || b?.createdAt);
+                const clientUserId =
+                  b?.client?._id || // si client es User
+                  b?.client?.user?._id || // si client es un wrapper
+                  null;
+
+                return (
+                  <div key={b._id} className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => { const peerId = b?.client?._id || b?.client?.user?._id; if (peerId) navigate(`/chats/${peerId}`); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); const peerId = b?.client?._id || b?.client?.user?._id; if (peerId) navigate(`/chats/${peerId}`); } } } title="Abrir chat con el cliente">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold leading-5">{clientName}</div>
+                        <div className="text-sm text-gray-700">{serviceName}</div>
+                        <div className="text-sm text-gray-600">{when}</div>
+                      </div>
+                      <BookingStatusBadge status={b?.status} />
+                    </div>
+                    {b?.note && (
+                      <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
+                        {b.note}
+                      </p>
+                    )}
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button
+                        onClick={() => navigate(`/chats/${b?.client?._id}`)}
+                        className="text-sm px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 cursor-pointer"
+                      >
+                        Chatear con cliente
+                        </button>
+                      <BookingActions booking={b} role="pro" onChanged={fetchNextBookings} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Chats (dummy) */}
+        {/* 💬 Chats recientes */}
         <div className="mb-12">
           <h2 className="text-2xl font-bold mb-4">💬 Chats recientes</h2>
           <div className="grid md:grid-cols-2 gap-6">
-            <ChatPreviewCard
-              name="Mariano Duarte"
-              lastMessage="¿Cuánto cuesta una revisión de gas?"
-              time="hace 2 horas"
-            />
-            <ChatPreviewCard
-              name="Laura Ledesma"
-              lastMessage="¡Gracias! Nos vemos el sábado."
-              time="hace 4 horas"
-            />
+            {recentChats.length === 0 ? (
+              <p className="text-gray-600">Aún no tenés chats.</p>
+            ) : recentChats.map((c) => (
+              <ChatPreviewCard
+                key={c._id}
+                name={c?.otherUser?.name || c?.otherUser?.email || "Usuario"}
+                lastMessage={c?.lastMessage?.text || "—"}
+                time={c?.lastMessage?.createdAt ? new Date(c.lastMessage.createdAt).toLocaleString() : ""}
+                peerId={c?.otherUser?._id}
+              />
+            ))}
           </div>
         </div>
 
-        {/* Profesionales disponibles ahora (live) */}
+        {/* Profesionales disponibles ahora */}
         <div className="text-left">
           <div className="flex items-center gap-2 mb-4">
             <h2 className="text-2xl font-bold">🟢 Profesionales disponibles ahora</h2>

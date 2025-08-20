@@ -52,4 +52,7 @@ export const updateMyProfessional = async (payload) => {
   return data; // { message, professional }
 };
 
-// (dejá el resto tal cual: setAvailableNow, updateAvailabilitySchedule, etc.)
+export const getProfessionalById = async (id) => {
+  const { data } = await axiosUser.get(`${API}/professionals/${id}`);
+  return data; // profesional con user + services
+};
