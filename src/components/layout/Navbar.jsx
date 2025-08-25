@@ -15,19 +15,16 @@ function Navbar() {
   const [openMenu, setOpenMenu] = useState(false);
   const menuRef = useRef(null);
 
-  // Estado “Disponible ahora” (solo profesionales)
   const [isAvailableNow, setIsAvailableNow] = useState(false);
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [availMsg, setAvailMsg] = useState("");
 
-  // efecto: sombra/blur al scrollear
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // cerrar dropdown al click fuera
   useEffect(() => {
     const onClick = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setOpenMenu(false);
@@ -36,7 +33,6 @@ function Navbar() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  // Prefill disponibilidad al montar si es pro
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -53,7 +49,6 @@ function Navbar() {
     };
   }, [user?.role, user?.id, user?._id]);
 
-  // Escuchar sockets de disponibilidad
   useEffect(() => {
     if (!socket || user?.role !== "professional") return;
     const myId = user?.id || user?._id;
@@ -81,7 +76,6 @@ function Navbar() {
     };
   }, [user?.role, user?.id, user?._id]);
 
-  // Sync entre pestañas
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key !== "suinfi:availabilityNow") return;
@@ -118,7 +112,7 @@ function Navbar() {
     try {
       setLoadingAvail(true);
       const next = !isAvailableNow;
-      setIsAvailableNow(next); // optimista
+      setIsAvailableNow(next);
       await setAvailableNow(next);
       setAvailMsg(next ? "Ahora estás disponible" : "Dejaste de estar disponible");
       broadcastAvailability(next);
@@ -132,7 +126,6 @@ function Navbar() {
     }
   };
 
-  // SOLO mostrar el botón Ayuda cuando el profesional está en /profile (onboarding)
   const showHelpOnly = user?.role === "professional" && location.pathname === "/profile";
 
   return (
@@ -150,17 +143,12 @@ function Navbar() {
         </Link>
 
         <div className="flex items-center gap-3 text-sm font-medium text-gray-300">
-          {/* === AYUDA (reemplaza al usuario en /profile profesional) === */}
           {showHelpOnly ? (
             <div className="relative">
               <details className="group">
                 <summary className="list-none flex items-center gap-2 bg-white text-black px-3 py-1.5 rounded-lg shadow hover:bg-gray-100 cursor-pointer">
                   <span className="font-semibold">Ayuda</span>
-                  <svg
-                    className="h-5 w-5 transition group-open:rotate-180"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
+                  <svg className="h-5 w-5 transition group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
                     <path
                       fillRule="evenodd"
                       d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
@@ -171,19 +159,19 @@ function Navbar() {
                 <div className="absolute right-0 mt-2 w-72 bg-white text-black border rounded-xl shadow-xl overflow-hidden z-50">
                   <button
                     onClick={() => {/* abrir chat de soporte */}}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-50 transition"
+                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
                   >
                     Chat con soporte
                   </button>
                   <button
                     onClick={() => window.open("https://tus-requisitos-ejemplo", "_blank")}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-50 transition"
+                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
                   >
                     Requisitos para socios de la app
                   </button>
                   <button
                     onClick={() => { logout(); navigate("/login"); }}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-50 transition text-red-600"
+                    className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                   >
                     Cerrar sesión
                   </button>
@@ -191,7 +179,6 @@ function Navbar() {
               </details>
             </div>
           ) : (
-            // === DROPDOWN DE USUARIO NORMAL ===
             <>
               {user ? (
                 <div className="relative" ref={menuRef}>
@@ -238,13 +225,25 @@ function Navbar() {
 
                       <button
                         onClick={goToDashboard}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 transition cursor-pointer"
+                        className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
                       >
                         Ir a mi panel
                       </button>
 
-                      <Link to="/profile" onClick={() => setOpenMenu(false)} className="block px-4 py-2 hover:bg-gray-50 transition">
+                      <Link
+                        to="/profile"
+                        onClick={() => setOpenMenu(false)}
+                        className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                      >
                         Mi perfil
+                      </Link>
+
+                      <Link
+                        to="/chats"
+                        onClick={() => setOpenMenu(false)}
+                        className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                      >
+                        Mensajes
                       </Link>
 
                       {user?.role === "professional" && (
@@ -266,7 +265,6 @@ function Navbar() {
                                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
                                   isAvailableNow ? "bg-emerald-500" : "bg-gray-300"
                                 } ${loadingAvail ? "opacity-60" : ""}`}
-                                aria-label="Conmutar disponibilidad"
                               >
                                 <span
                                   className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
@@ -277,40 +275,36 @@ function Navbar() {
                             </div>
                             {availMsg && <p className="text-xs text-gray-500 mt-2">{availMsg}</p>}
                           </div>
-{/* 
-                          <Link
-                            to="/dashboard/professional/availability"
-                            onClick={() => setOpenMenu(false)}
-                            className="block px-4 py-2 hover:bg-gray-50 transition"
-                          >
-                            Editar agenda semanal
-                          </Link> */}
                         </>
                       )}
-                    <button
-                      onClick={() => {
-                        setOpenMenu(false);
-                        logout();
-                        navigate("/login");
-                      }}
-                      className="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 transition border-t cursor-pointer"
-                    >
-                      Cerrar sesión
-                    </button>
+
+                      <button
+                        onClick={() => {
+                          setOpenMenu(false);
+                          logout();
+                          navigate("/login");
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors border-t"
+                      >
+                        Cerrar sesión
+                      </button>
                     </div>
                   )}
                 </div>
               ) : (
                 <>
                   {location.pathname !== "/login" && (
-                    <Link to="/login" className="text-white hover:text-gray-300 transition">
+                    <Link
+                      to="/login"
+                      className="text-white hover:text-amber-400 transition-colors"
+                    >
                       Iniciar sesión
                     </Link>
                   )}
                   {location.pathname !== "/register" && (
                     <Link
                       to="/register"
-                      className="border border-white text-white px-4 py-2 rounded-md hover:bg-white hover:text-black transition"
+                      className="border border-white text-white px-4 py-2 rounded-md hover:bg-white hover:text-[#0a0e17] transition-colors"
                     >
                       Registrate
                     </Link>

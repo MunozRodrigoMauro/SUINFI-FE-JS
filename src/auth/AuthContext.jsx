@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { loginUser, verifyToken } from "../api/userService";
-import { socket, joinUserRoom, leaveUserRoom } from "../lib/socket"; // ⬅️ NUEVO
+import { socket, joinUserRoom } from "../lib/socket"; // ⬅️ NUEVO
 
 const AuthContext = createContext();
 

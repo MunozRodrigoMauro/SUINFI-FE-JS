@@ -1,50 +1,104 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import ChatPreviewCard from "../components/chat/ChatPreviewCard";
-import { getProfessionals } from "../api/professionalService";
+import { getProfessionals, getAvailableNowProfessionals } from "../api/professionalService";
 import { getMyBookings } from "../api/bookingService";
 import BookingStatusBadge from "../components/booking/BookingStatusBadge";
 import { formatDateTime } from "../utils/datetime";
 import axiosUser from "../api/axiosUser";
-import { socket } from "../lib/socket"; // ✅ singleton
+import { socket } from "../lib/socket";
 import { fetchMyChats } from "../api/chatService";
+import { haversineKm, fmtKm } from "../utils/geo";
+import MapCanvas from "../components/map/ProfessionalRequest/MapCanvas";
+import { getMyProfile } from "../api/userService";
+import ChatDock from "../components/chat/ChatDock";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const MAP_KEY = import.meta.env.VITE_MAP_API_KEY;
 
-// clave para persistir filtros
+// Geocoder MapTiler
+async function geocode(q) {
+  if (!q?.trim()) return [];
+  const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${MAP_KEY}&language=es`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return (data?.features || []).map((f) => ({
+    id: f.id,
+    name: f.place_name || f.text,
+    lat: f.center?.[1],
+    lng: f.center?.[0],
+  }));
+}
+async function reverseGeocode(lat, lng) {
+  const url = `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
+  const res = await fetch(url);
+  const data = await res.json();
+  const f = (data?.features || [])[0];
+  if (!f) return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  return f.place_name || f.text || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
 const LS_KEY = "suinfi:userdash:filters";
 const RECENT_LIMIT = 2;
+const PAGE_SIZE = 3;
+
+function normalizeProLoc(p) {
+  const g = p?.location?.coordinates;
+  if (Array.isArray(g) && g.length === 2 && Number.isFinite(g[0]) && Number.isFinite(g[1])) {
+    return { lat: g[1], lng: g[0] };
+  }
+  const a = p?.address?.location;
+  if (a && Number.isFinite(a.lat) && Number.isFinite(a.lng)) return a;
+  return null;
+}
 
 function UserDashboard() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const navigate = useNavigate();
 
-  // --- estado de filtros ---
   const [categoryId, setCategoryId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [availableNow, setAvailableNow] = useState(false);
 
-  // listas para selects
+  const [origin, setOrigin] = useState(null);
+  const [radiusKm, setRadiusKm] = useState(10);
+
+  const [query, setQuery] = useState("");
+  const [suggests, setSuggests] = useState([]);
+  const [isFocused, setIsFocused] = useState(false);
+  const [allowSuggests, setAllowSuggests] = useState(false);
+  const geoTimer = useRef(0);
+
   const [categories, setCategories] = useState([]);
   const [services, setServices] = useState([]);
 
-  // catálogo
+  const [allResults, setAllResults] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // paginación
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const limit = 3;
 
-  // 🆕 reservas recientes (reales)
+  const [liveLocs, setLiveLocs] = useState(new Map());
+
   const [recent, setRecent] = useState([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
 
-  // ───────────────────────────────────────────────────────────────
-  // Persistencia de filtros en localStorage
+  const [recentChats, setRecentChats] = useState([]);
+
+  // Disponibles ahora (paginado de a 3) — AL FINAL
+  const [onlinePros, setOnlinePros] = useState([]);
+  const [loadingOnline, setLoadingOnline] = useState(true);
+  const [onlinePage, setOnlinePage] = useState(1);
+  const ONLINE_PER_PAGE = 3;
+  const onlinePages = Math.max(1, Math.ceil((onlinePros?.length || 0) / ONLINE_PER_PAGE));
+  const onlineSlice = useMemo(() => {
+    const start = (onlinePage - 1) * ONLINE_PER_PAGE;
+    return onlinePros.slice(start, start + ONLINE_PER_PAGE);
+  }, [onlinePros, onlinePage]);
+
+  // Persistencia filtros
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
@@ -52,18 +106,16 @@ function UserDashboard() {
         if (saved.categoryId) setCategoryId(saved.categoryId);
         if (saved.serviceId) setServiceId(saved.serviceId);
         if (typeof saved.availableNow === "boolean") setAvailableNow(saved.availableNow);
+        if (typeof saved.radiusKm === "number") setRadiusKm(saved.radiusKm);
       }
     } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
   useEffect(() => {
-    const payload = { categoryId, serviceId, availableNow };
+    const payload = { categoryId, serviceId, availableNow, radiusKm };
     localStorage.setItem(LS_KEY, JSON.stringify(payload));
-  }, [categoryId, serviceId, availableNow]);
-  // ───────────────────────────────────────────────────────────────
+  }, [categoryId, serviceId, availableNow, radiusKm]);
 
-  // cargar combos
+  // Combos
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -75,14 +127,11 @@ function UserDashboard() {
         if (!mounted) return;
         setCategories(cats.data || []);
         setServices(servs.data || []);
-      } catch {
-        /* noop */
-      }
+      } catch {}
     })();
     return () => { mounted = false; };
   }, []);
 
-  // si cambia categoría, filtramos services del combo (sin pegarle al back de nuevo)
   const filteredServices = useMemo(() => {
     if (!categoryId) return services;
     return (services || []).filter(
@@ -90,80 +139,231 @@ function UserDashboard() {
     );
   }, [services, categoryId]);
 
-  // fetch catálogo (con paginación y filtros)
-  const fetchCatalog = async (pageArg = 1) => {
+  // Perfil + origen
+  useEffect(() => {
+    (async () => {
+      try {
+        const me = await getMyProfile();
+        setUser((prev) => ({ ...prev, ...me }));
+        const loc = me?.address?.location;
+        if (loc?.lat != null && loc?.lng != null) {
+          const c = { lat: loc.lat, lng: loc.lng };
+          setOrigin(c);
+          setQuery(me?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+          setAllowSuggests(false);
+          setSuggests([]);
+        }
+      } catch {}
+    })();
+  }, [setUser]);
+
+  useEffect(() => {
+    const loc = user?.address?.location;
+    if (loc?.lat != null && loc?.lng != null) {
+      const c = { lat: loc.lat, lng: loc.lng };
+      setOrigin(c);
+      setQuery(user?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+      setAllowSuggests(false);
+      setSuggests([]);
+    }
+  }, [user?.address?.location?.lat, user?.address?.location?.lng]);
+
+  useEffect(() => {
+    const onVisible = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const me = await getMyProfile();
+        setUser((prev) => ({ ...prev, ...me }));
+        const hasCoords = me?.address?.location?.lat != null && me?.address?.location?.lng != null;
+        if (hasCoords) {
+          const c = { lat: me.address.location.lat, lng: me.address.location.lng };
+          setOrigin(c);
+          setQuery(me?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+          setAllowSuggests(false);
+          setSuggests([]);
+          return;
+        }
+        const a = me?.address || {};
+        const line = [a.street && `${a.street} ${a.number || ""}`, a.city, a.state, a.postalCode, a.country]
+          .filter(Boolean).join(", ");
+        if (line) {
+          const [hit] = await geocode(line);
+          if (hit?.lat != null && hit?.lng != null) {
+            setOrigin({ lat: hit.lat, lng: hit.lng });
+            setQuery(hit.name || line);
+            setAllowSuggests(false);
+            setSuggests([]);
+          }
+        }
+      } catch {}
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [setUser]);
+
+  // Autocomplete
+  useEffect(() => {
+    window.clearTimeout(geoTimer.current);
+    if (!isFocused || !allowSuggests || !query) { setSuggests([]); return; }
+    geoTimer.current = window.setTimeout(async () => {
+      try {
+        const s = await geocode(query);
+        setSuggests(s.slice(0, 6));
+      } catch { setSuggests([]); }
+    }, 300);
+  }, [query, isFocused, allowSuggests]);
+
+  const useProfileAddress = async () => {
+    let u = user;
+    if (!u?.address) {
+      try {
+        const me = await getMyProfile();
+        setUser((prev) => ({ ...prev, ...me }));
+        u = me;
+      } catch {}
+    }
+    const loc = u?.address?.location;
+    if (loc?.lat != null && loc?.lng != null) {
+      setOrigin({ lat: loc.lat, lng: loc.lng });
+      setQuery(u?.address?.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`);
+      setAllowSuggests(false);
+      setSuggests([]);
+      return;
+    }
+    const a = u?.address || {};
+    const line = [a.street && `${a.street} ${a.number || ""}`, a.city, a.state, a.postalCode, a.country]
+      .filter(Boolean).join(", ");
+    if (!line) return alert("Tu perfil no tiene dirección suficiente. Completala en Mi Perfil o usá GPS.");
+    try {
+      const [hit] = await geocode(line);
+      if (hit?.lat != null && hit?.lng != null) {
+        setOrigin({ lat: hit.lat, lng: hit.lng });
+        setQuery(hit.name || line);
+        setAllowSuggests(false);
+        setSuggests([]);
+      } else {
+        alert("No pudimos ubicar tu dirección. Revisá los datos o usá GPS.");
+      }
+    } catch {
+      alert("No pudimos ubicar tu dirección. Probá nuevamente o usá GPS.");
+    }
+  };
+
+  const useGPS = () => {
+    if (!navigator.geolocation) return alert("GPS no disponible en este navegador.");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setOrigin(c);
+        setQuery(`${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+        setAllowSuggests(false);
+        setSuggests([]);
+      },
+      () => alert("No pudimos obtener tu ubicación.")
+    );
+  };
+
+  // Socket: disponibilidad + ubicaciones
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => { refetchCatalog(); refetchOnline(); };
+    socket.on("availability:update", refresh);
+    socket.on("availability:changed", refresh);
+    socket.on("connect", refresh);
+
+    const onProLoc = (payload) => {
+      if (!payload?.userId || payload.lat == null || payload.lng == null) return;
+      setLiveLocs((prev) => {
+        const next = new Map(prev);
+        next.set(payload.userId, { lat: payload.lat, lng: payload.lng, ts: Date.now() });
+        return next;
+      });
+    };
+    socket.on("pro:location:update", onProLoc);
+
+    return () => {
+      socket.off("availability:update", refresh);
+      socket.off("availability:changed", refresh);
+      socket.off("connect", refresh);
+      socket.off("pro:location:update", onProLoc);
+    };
+  }, []);
+
+  // === Catálogo
+  const refetchCatalog = async () => {
     setLoading(true);
     try {
-      const params = { page: pageArg, limit };
-      if (availableNow) params.availableNow = true;
-      if (categoryId) params.categoryId = categoryId;
-      if (serviceId) params.serviceId = serviceId;
+      let list = [];
+      if (origin?.lat != null && origin?.lng != null) {
+        const params = { lat: origin.lat, lng: origin.lng, maxDistance: radiusKm * 1000 };
+        if (availableNow) params.availableNow = true;
+        if (categoryId) params.categoryId = categoryId;
+        if (serviceId) params.serviceId = serviceId;
 
-      const data = await getProfessionals(params);
-      if (Array.isArray(data)) {
-        setItems(data);
-        setTotal(data.length);
-        setPages(1);
-        setPage(1);
+        const { data } = await axiosUser.get(`${API}/professionals/nearby`, { params });
+        list = Array.isArray(data) ? data : [];
       } else {
-        setItems(data.items || []);
-        setTotal(data.total || 0);
-        setPages(data.pages || 1);
-        setPage(data.page || 1);
+        const params = {};
+        if (availableNow) params.availableNow = true;
+        if (categoryId) params.categoryId = categoryId;
+        if (serviceId) params.serviceId = serviceId;
+        const data = await getProfessionals(params);
+        list = Array.isArray(data) ? data : data.items || [];
       }
+
+      const annotated = (list || []).map((p) => {
+        const fallback = normalizeProLoc(p);
+        const userId = p?.user?._id;
+        const live = userId ? liveLocs.get(userId) : null;
+        const loc =
+          live && Date.now() - (live.ts || 0) < 120000
+            ? { lat: live.lat, lng: live.lng }
+            : fallback;
+
+        const d =
+          origin?.lat != null && loc?.lat != null
+            ? haversineKm(origin, { lat: loc.lat, lng: loc.lng })
+            : null;
+
+        return { ...p, _distanceKm: d, _plotLoc: loc };
+      });
+
+      setAllResults(annotated);
+      setTotal(annotated.length);
+      const pgs = Math.max(1, Math.ceil(annotated.length / PAGE_SIZE));
+      setPages(pgs);
+      setPage(1);
+      setItems(annotated.slice(0, PAGE_SIZE));
     } finally {
       setLoading(false);
     }
   };
-
-  // cargar catálogo al inicio y cuando cambian filtros
   useEffect(() => {
-    fetchCatalog(1);
+    refetchCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableNow, categoryId, serviceId]);
+  }, [origin?.lat, origin?.lng, radiusKm, availableNow, categoryId, serviceId]);
 
-  // si cambia category, limpiar service seleccionado
-  useEffect(() => {
-    setServiceId("");
-  }, [categoryId]);
+  const goToPage = (n) => {
+    const p = Math.min(Math.max(1, n), pages);
+    const start = (p - 1) * PAGE_SIZE;
+    setPage(p);
+    setItems(allResults.slice(start, start + PAGE_SIZE));
+  };
 
-  const displayName = (u) => u?.name || u?.email?.split("@")[0] || "Usuario";
+  useEffect(() => { setServiceId(""); }, [categoryId]);
 
-  // 🔴 LIVE catálogo: actualizar en tiempo real ante cambios de disponibilidad
-  useEffect(() => {
-    if (!socket) return;
-
-    const handler = () => fetchCatalog(page);
-    const onConnect = () => fetchCatalog(page);
-
-    socket.on("availability:update", handler);
-    socket.on("availability:changed", handler);
-    socket.on("connect", onConnect);
-
-    return () => {
-      socket.off("availability:update", handler);
-      socket.off("availability:changed", handler);
-      socket.off("connect", onConnect);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
-
-  // 🆕 Reservas recientes (reales) + LIVE por socket booking
+  // Reservas recientes
   const fetchRecent = async () => {
     setLoadingRecent(true);
     try {
       const list = await getMyBookings();
-      const safe = Array.isArray(list) ? list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : [];
+      const safe = Array.isArray(list)
+        ? list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        : [];
       setRecent(safe.slice(0, RECENT_LIMIT));
-    } finally {
-      setLoadingRecent(false);
-    }
+    } finally { setLoadingRecent(false); }
   };
-
-  useEffect(() => {
-    fetchRecent();
-  }, []);
-
+  useEffect(() => { fetchRecent(); }, []);
   useEffect(() => {
     if (!socket) return;
     const onCreated = () => fetchRecent();
@@ -176,77 +376,160 @@ function UserDashboard() {
     };
   }, []);
 
-  const [recentChats, setRecentChats] = useState([]);
+  // Chats recientes (para el dock y tarjetas)
   useEffect(() => { (async () => setRecentChats(await fetchMyChats()))(); }, []);
+
+  // Disponibles ahora
+  const refetchOnline = async () => {
+    setLoadingOnline(true);
+    try {
+      const list = await getAvailableNowProfessionals();
+      setOnlinePros(Array.isArray(list) ? list : []);
+      setOnlinePage(1);
+    } finally {
+      setLoadingOnline(false);
+    }
+  };
+  useEffect(() => { refetchOnline(); }, []);
+
+  const displayName = (u) => u?.name || u?.email?.split("@")[0] || "Usuario";
+
+  const mapMarkers = useMemo(() => {
+    return (allResults || [])
+      .map(p => p?._plotLoc)
+      .filter(loc => loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng))
+      .map((loc, i) => ({
+        lat: loc.lat,
+        lng: loc.lng,
+        color: "#10b981",
+        title: allResults[i]?.user?.name || "Profesional",
+      }));
+  }, [allResults]);
 
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] pt-24 pb-20 px-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <h1 className="text-4xl font-bold mb-2">
-          🎯 Cliente: {displayName(user).charAt(0).toUpperCase() + displayName(user).slice(1)}
-          </h1> 
-        </div>
+        {/* Solicitar servicio + mapa */}
+        <div className="grid lg:grid-cols-[420px_minmax(0,1fr)] gap-4 mb-8">
+          <div className="bg-white border rounded-2xl shadow-sm p-4 h-fit">
+            <h2 className="text-xl font-semibold mb-3">Solicitá un servicio</h2>
 
-        {/* Filtros */}
-        <div className="bg-[#111827] rounded-lg p-6 mb-6 shadow-md">
-          <div className="grid md:grid-cols-4 gap-4 items-end">
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Categoría</label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full px-3 py-2 rounded bg-white text-black"
-              >
-                <option value="">Todas</option>
-                {(categories || []).map((c) => (
-                  <option key={c._id} value={c._id}>{c.name}</option>
-                ))}
-              </select>
+            <div className="mb-3">
+              <label className="block text-xs text-gray-500 mb-1">Ingresá una ubicación</label>
+              <input
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setAllowSuggests(true); }}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => { setIsFocused(false); setTimeout(() => setSuggests([]), 120); }}
+                placeholder="Calle, número, ciudad…"
+                className="w-full border rounded-lg px-3 py-2"
+              />
+              {isFocused && allowSuggests && suggests.length > 0 && (
+                <div className="mt-2 rounded-lg border bg-white shadow-sm overflow-hidden">
+                  {suggests.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                      onMouseDown={() => {
+                        setOrigin({ lat: s.lat, lng: s.lng });
+                        setQuery(s.name);
+                        setAllowSuggests(false);
+                        setSuggests([]);
+                      }}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Servicio</label>
-              <select
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                className="w-full px-3 py-2 rounded bg-white text-black"
-              >
-                <option value="">Todos</option>
-                {(filteredServices || []).map((s) => (
-                  <option key={s._id} value={s._id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => fetchCatalog(1)}
-                disabled={loading}
-                className={`px-4 py-2 rounded-lg border cursor-pointer ${
-                  loading
-                    ? "opacity-60 cursor-wait"
-                    : "bg-white hover:bg-gray-100 text-black"
-                }`}
-              >
-                {loading ? "Aplicando…" : "Aplicar"}
+            <div className="flex gap-2 mb-3">
+              <button onClick={useProfileAddress} className="px-3 py-2 rounded border bg-white hover:bg-gray-50">
+                Usar mi perfil
               </button>
-              <button
-                onClick={() => {
-                  setCategoryId("");
-                  setServiceId("");
-                  setAvailableNow(false);
-                }}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 cursor-pointer"
-              >
-                Limpiar
+              <button onClick={useGPS} className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black">
+                Usar GPS
               </button>
             </div>
+
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-sm text-gray-600">Radio</span>
+              <input
+                type="range"
+                min={1}
+                max={50}
+                value={radiusKm}
+                onChange={(e) => setRadiusKm(+e.target.value)}
+                className="flex-1"
+              />
+              <span className="text-sm w-12 text-right">{radiusKm} km</span>
+            </div>
+            <label className="inline-flex items-center gap-2 mb-3">
+              <input type="checkbox" checked={availableNow} onChange={(e) => setAvailableNow(e.target.checked)} />
+              <span className="text-sm">Mostrar solo “Disponibles ahora”</span>
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Categoría</label>
+                <select
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="w-full px-3 py-2 rounded border bg-white"
+                >
+                  <option value="">Todas</option>
+                  {(categories || []).map((c) => (
+                    <option key={c._id} value={c._id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Servicio</label>
+                <select
+                  value={serviceId}
+                  onChange={(e) => setServiceId(e.target.value)}
+                  className="w-full px-3 py-2 rounded border bg-white"
+                >
+                  <option value="">Todos</option>
+                  {(filteredServices || []).map((s) => (
+                    <option key={s._id} value={s._id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="text-sm text-gray-600">
+              {origin?.lat != null
+                ? <>Origen: <b>{origin.lat.toFixed(5)}, {origin.lng.toFixed(5)}</b></>
+                : <>Elegí una ubicación para ver profesionales cercanos.</>}
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <MapCanvas
+              center={origin || { lat: -34.6037, lng: -58.3816 }}
+              markers={mapMarkers}
+              radiusKm={origin ? radiusKm : null}
+              draggableOrigin
+              onOriginDrag={() => {}}
+              onOriginDragEnd={async ({ lat, lng }) => {
+                setOrigin({ lat, lng });
+                try {
+                  const nice = await reverseGeocode(lat, lng);
+                  if (nice) {
+                    setQuery(nice);
+                    setAllowSuggests(false);
+                    setSuggests([]);
+                  }
+                } catch {}
+              }}
+            />
           </div>
         </div>
 
-        {/* Resultados */}
+        {/* Resultados (catálogo) */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-semibold">Profesionales</h2>
           <span className="text-sm text-gray-600">{total} resultados</span>
@@ -269,32 +552,21 @@ function UserDashboard() {
               </div>
             ))}
           </div>
-        ) : items.length === 0 ? (
+        ) : allResults.length === 0 ? (
           <p className="text-gray-600">No se encontraron profesionales con esos filtros.</p>
         ) : (
           <div className="grid md:grid-cols-3 gap-6 mb-8">
             {items.map((p) => {
               const name = p?.user?.name || "Profesional";
               const email = p?.user?.email || "";
-              const servicesNames = (p.services || []).map(s => s?.name).filter(Boolean);
+              const servicesNames = (p.services || []).map((s) => s?.name).filter(Boolean);
               const firstService = servicesNames[0] || "Servicio";
               const restCount = Math.max(0, servicesNames.length - 1);
-              const peerUserId = p?.user?._id; // 👈 ESTE es el id correcto para chat
 
               return (
-                <div
-                  key={p._id}
-                  className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition"
-                >
-                  {/* Header visual */}
+                <div key={p._id} className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
                   <div className="relative h-28 bg-gradient-to-r from-slate-800 to-slate-700">
-                    <span
-                      className={`absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border ${
-                        p.isAvailableNow
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-gray-50 text-gray-600 border-gray-200"
-                      }`}
-                    >
+                    <span className={`absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border ${p.isAvailableNow ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-600 border-gray-200"}`}>
                       {p.isAvailableNow ? "Disponible ahora" : "Offline"}
                     </span>
                     <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white grid place-items-center text-slate-800 font-bold">
@@ -302,16 +574,13 @@ function UserDashboard() {
                     </div>
                   </div>
 
-                  {/* Body */}
                   <div className="pt-8 px-4 pb-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-base font-semibold leading-5 line-clamp-1">{name}</h3>
                         <p className="text-xs text-gray-600 line-clamp-1">{email}</p>
                       </div>
-                      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                        ⭐ 4.8
-                      </div>
+                      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⭐ 4.8</div>
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -325,7 +594,10 @@ function UserDashboard() {
                       )}
                     </div>
 
-                    {/* Botones alineados a la derecha */}
+                    {origin?.lat != null && p?._distanceKm != null && (
+                      <div className="mt-2 text-xs text-gray-600">A {fmtKm(p._distanceKm)} de tu ubicación</div>
+                    )}
+
                     <div className="mt-4 flex justify-end gap-2">
                       <button
                         onClick={() => navigate(`/chats/${p?.user?._id}`)}
@@ -347,39 +619,31 @@ function UserDashboard() {
           </div>
         )}
 
-        {/* Paginación */}
         {pages > 1 && (
           <div className="flex items-center justify-center gap-2 mb-16">
             <button
               disabled={page <= 1}
-              onClick={() => fetchCatalog(page - 1)}
-              className={`px-3 py-1 rounded border cursor-pointer ${
-                page <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
-              }`}
+              onClick={() => goToPage(page - 1)}
+              className={`px-3 py-1 rounded border cursor-pointer ${page <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
             >
               ←
             </button>
             <span className="text-sm text-gray-700">Página {page} de {pages}</span>
             <button
               disabled={page >= pages}
-              onClick={() => fetchCatalog(page + 1)}
-              className={`px-3 py-1 rounded border cursor-pointer ${
-                page >= pages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
-              }`}
+              onClick={() => goToPage(page + 1)}
+              className={`px-3 py-1 rounded border cursor-pointer ${page >= pages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
             >
               →
             </button>
           </div>
         )}
 
-        {/* 🆕 Reservas recientes reales */}
+        {/* Reservas recientes */}
         <div className="text-left mb-16">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold">📋 Reservas recientes</h2>
-            <button
-              onClick={() => navigate("/bookings")}
-              className="text-sm px-3 py-1.5 rounded-md bg-slate-800 text-white hover:bg-black cursor-pointer"
-            >
+            <button onClick={() => navigate("/bookings")} className="text-sm px-3 py-1.5 rounded-md bg-slate-800 text-white hover:bg-black cursor-pointer">
               Ver todas
             </button>
           </div>
@@ -389,10 +653,7 @@ function UserDashboard() {
           ) : recent.length === 0 ? (
             <div className="border rounded-xl p-6 bg-white">
               <p className="text-gray-600 mb-3">Aún no tenés reservas.</p>
-              <button
-                onClick={() => navigate("/dashboard/user")}
-                className="text-sm px-3 py-1.5 rounded bg-amber-500 text-white hover:bg-amber-600"
-              >
+              <button onClick={() => navigate("/dashboard/user")} className="text-sm px-3 py-1.5 rounded bg-amber-500 text-white hover:bg-amber-600">
                 Buscar profesionales
               </button>
             </div>
@@ -416,7 +677,6 @@ function UserDashboard() {
                   }}
                   title="Abrir chat con el profesional"
                 >
-                  {/* contenido interno igual */}
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold leading-5">
@@ -438,24 +698,112 @@ function UserDashboard() {
           )}
         </div>
 
-        {/* 💬 Chats recientes */}
-        <div className="text-left">
-          <h2 className="text-2xl font-bold mb-4">💬 Chats recientes</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            {recentChats.length === 0 ? (
-              <p className="text-gray-600">Aún no tenés chats.</p>
-            ) : recentChats.map((c) => (
-              <ChatPreviewCard
-                key={c._id}
-                name={c?.otherUser?.name || c?.otherUser?.email || "Usuario"}
-                lastMessage={c?.lastMessage?.text || "—"}
-                time={c?.lastMessage?.createdAt ? new Date(c.lastMessage.createdAt).toLocaleString() : ""}
-                peerId={c?.otherUser?._id}
-              />
-            ))}
+        {/* 🟢 Disponibles ahora — AL FINAL (paginado 3) */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-semibold">🟢 Disponibles ahora</h2>
+              <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                {onlinePros.length}
+              </span>
+            </div>
+            {onlinePages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setOnlinePage((p) => Math.max(1, p - 1))}
+                  disabled={onlinePage <= 1}
+                  className={`px-2 py-1 rounded border cursor-pointer ${onlinePage <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
+                  title="Anterior"
+                >
+                  ←
+                </button>
+                <span className="text-sm text-gray-700">
+                  Página {onlinePage} de {onlinePages}
+                </span>
+                <button
+                  onClick={() => setOnlinePage((p) => Math.min(onlinePages, p + 1))}
+                  disabled={onlinePage >= onlinePages}
+                  className={`px-2 py-1 rounded border cursor-pointer ${onlinePage >= onlinePages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
+                  title="Siguiente"
+                >
+                  →
+                </button>
+              </div>
+            )}
           </div>
+
+          {loadingOnline ? (
+            <p className="text-gray-600">Cargando…</p>
+          ) : onlinePros.length === 0 ? (
+            <p className="text-gray-600">No hay profesionales en línea ahora.</p>
+          ) : (
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {onlineSlice.map((p) => {
+                const name = p?.user?.name || "Profesional";
+                const email = p?.user?.email || "";
+                const servicesNames = (p.services || []).map((s) => s?.name).filter(Boolean);
+                const firstService = servicesNames[0] || "Servicio";
+                const restCount = Math.max(0, servicesNames.length - 1);
+
+                return (
+                  <div key={p._id} className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
+                    <div className="relative h-24 bg-gradient-to-r from-emerald-700 to-emerald-600">
+                      <span className="absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                        Disponible ahora
+                      </span>
+                      <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white grid place-items-center text-emerald-700 font-bold">
+                        {(name[0] || "P").toUpperCase()}
+                      </div>
+                    </div>
+
+                    <div className="pt-8 px-4 pb-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold leading-5 line-clamp-1">{name}</h3>
+                          <p className="text-xs text-gray-600 line-clamp-1">{email}</p>
+                        </div>
+                        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⭐ {p?.averageRating || 4.8}</div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          {firstService}
+                        </span>
+                        {restCount > 0 && (
+                          <span className="text-xs px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
+                            +{restCount} más
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button
+                          onClick={() => navigate(`/chats/${p?.user?._id}`)}
+                          className="text-sm font-medium bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
+                        >
+                          Chatear
+                        </button>
+                        <button
+                          onClick={() => navigate(`/professional/${p._id}?reserve=1`)}
+                          className="text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-md shadow-sm cursor-pointer"
+                        >
+                          Reservar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Dock de chat */}
+      <ChatDock
+        chats={recentChats}
+        onOpenChat={(peerId) => navigate(`/chats/${peerId}`)}
+      />
     </section>
   );
 }

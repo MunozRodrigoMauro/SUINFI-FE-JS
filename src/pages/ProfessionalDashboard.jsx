@@ -1,3 +1,4 @@
+// src/pages/ProfessionalDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -12,6 +13,7 @@ import BookingActions from "../components/booking/BookingActions";
 import { getBookingsForMe } from "../api/bookingService";
 import { formatDateTime } from "../utils/datetime";
 import { fetchMyChats } from "../api/chatService";
+import ChatDock from "../components/chat/ChatDock";
 
 function ProfessionalDashboard() {
   const { user } = useAuth();
@@ -51,18 +53,13 @@ function ProfessionalDashboard() {
       await refetchOnline();
       if (!mounted) return;
     })();
-    return () => {
-      mounted = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
     if (!socket) return;
 
-    const onConnect = () => {
-      refetchOnline();
-    };
+    const onConnect = () => { refetchOnline(); };
 
     const handler = async ({ userId, isAvailableNow: avail }) => {
       if (userId === (user?.id || user?._id)) {
@@ -82,7 +79,6 @@ function ProfessionalDashboard() {
       socket.off("availability:update", handler);
       socket.off("availability:changed", handler);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?._id]);
 
   useEffect(() => {
@@ -145,9 +141,7 @@ function ProfessionalDashboard() {
       if (!myId || payload?.professionalUserId !== myId) return;
       fetchNextBookings();
     };
-    const onUpdated = () => {
-      fetchNextBookings();
-    };
+    const onUpdated = () => { fetchNextBookings(); };
     socket.on("booking:created", onCreated);
     socket.on("booking:updated", onUpdated);
     return () => {
@@ -156,7 +150,7 @@ function ProfessionalDashboard() {
     };
   }, [user?.id, user?._id]);
 
-  // Próximas reservas (reales)
+  // Próximas reservas
   const [nextBookings, setNextBookings] = useState([]);
   const [loadingNext, setLoadingNext] = useState(true);
   const RECENT_LIMIT_PRO = 3;
@@ -183,13 +177,30 @@ function ProfessionalDashboard() {
       await fetchNextBookings();
       if (!mounted) return;
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
+  // 💬 Chats recientes + paginación (2 por página) — igual que en UserDash
   const [recentChats, setRecentChats] = useState([]);
+  const RECENT_CHATS_PAGE_SIZE = 2;
+  const [chatPage, setChatPage] = useState(1);
+  const [chatPages, setChatPages] = useState(1);
+  const [chatSlice, setChatSlice] = useState([]);
+
   useEffect(() => { (async () => setRecentChats(await fetchMyChats()))(); }, []);
+  useEffect(() => {
+    const total = recentChats.length;
+    const pgs = Math.max(1, Math.ceil(total / RECENT_CHATS_PAGE_SIZE));
+    setChatPages(pgs);
+    setChatPage(1);
+    setChatSlice(recentChats.slice(0, RECENT_CHATS_PAGE_SIZE));
+  }, [recentChats]);
+  const goChatPage = (n) => {
+    const p = Math.min(Math.max(1, n), chatPages);
+    const start = (p - 1) * RECENT_CHATS_PAGE_SIZE;
+    setChatPage(p);
+    setChatSlice(recentChats.slice(start, start + RECENT_CHATS_PAGE_SIZE));
+  };
 
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] py-24 px-4">
@@ -197,7 +208,9 @@ function ProfessionalDashboard() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">
           <div>
-            <h1 className="text-3xl font-bold">🔧 Profesional: {myName.charAt(0).toUpperCase() + myName.slice(1)}</h1> 
+            <h1 className="text-3xl font-bold">
+              🔧 Profesional: {myName.charAt(0).toUpperCase() + myName.slice(1)}
+            </h1>
           </div>
 
           <div className="flex items-center gap-3 bg-white border rounded-xl shadow-sm px-4 py-2">
@@ -207,11 +220,9 @@ function ProfessionalDashboard() {
               }`}
               title={isAvailableNow ? "Aparecés como disponible" : "No figurás como disponible"}
             >
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  isAvailableNow ? "bg-emerald-500" : "bg-gray-400"
-                }`}
-              />
+              <span className={`h-2.5 w-2.5 rounded-full ${
+                isAvailableNow ? "bg-emerald-500" : "bg-gray-400"
+              }`} />
               {isAvailableNow ? "Disponible" : "No disponible"}
               {lastUpdated && (
                 <span className="text-xs text-gray-400">· {lastUpdated.toLocaleTimeString()}</span>
@@ -256,15 +267,24 @@ function ProfessionalDashboard() {
             ⚙️ Configuración
             <p className="text-[#111827] text-xs mt-1">Perfil, agenda semanal y más</p>
           </button>
-          <button onClick={() => navigate("/bookings")} className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer">
+          <button
+            onClick={() => navigate("/bookings")}
+            className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer"
+          >
             📅 Reservas
             <p className="text-[#111827] text-xs mt-1">Próximas y pendientes</p>
           </button>
-          <button onClick={() => navigate("/dashboard/professional/messages")} className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer">
+          <button
+            onClick={() => navigate("/chats")}
+            className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer"
+          >
             💬 Mensajes
             <p className="text-[#111827] text-xs mt-1">Conversaciones recientes</p>
           </button>
-          <button onClick={() => navigate("/dashboard/professional/services")} className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer">
+          <button
+            onClick={() => navigate("/dashboard/professional/services")}
+            className="bg-white border border-gray-200 text-[#111827] p-4 rounded-xl shadow hover:shadow-lg transition text-left cursor-pointer"
+          >
             🧰 Servicios
             <p className="text-[#111827] text-xs mt-1">Gestioná tu oferta</p>
           </button>
@@ -295,13 +315,26 @@ function ProfessionalDashboard() {
                 const clientName = b?.client?.name || b?.client?.email || "Cliente";
                 const serviceName = b?.service?.name || "Servicio";
                 const when = formatDateTime(b?.scheduledAt || b?.createdAt);
-                const clientUserId =
-                  b?.client?._id || // si client es User
-                  b?.client?.user?._id || // si client es un wrapper
-                  null;
 
                 return (
-                  <div key={b._id} className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => { const peerId = b?.client?._id || b?.client?.user?._id; if (peerId) navigate(`/chats/${peerId}`); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); const peerId = b?.client?._id || b?.client?.user?._id; if (peerId) navigate(`/chats/${peerId}`); } } } title="Abrir chat con el cliente">
+                  <div
+                    key={b._id}
+                    className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition"
+                    onClick={() => {
+                      const peerId = b?.client?._id || b?.client?.user?._id;
+                      if (peerId) navigate(`/chats/${peerId}`);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        const peerId = b?.client?._id || b?.client?.user?._id;
+                        if (peerId) navigate(`/chats/${peerId}`);
+                      }
+                    }}
+                    title="Abrir chat con el cliente"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold leading-5">{clientName}</div>
@@ -321,7 +354,7 @@ function ProfessionalDashboard() {
                         className="text-sm px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 cursor-pointer"
                       >
                         Chatear con cliente
-                        </button>
+                      </button>
                       <BookingActions booking={b} role="pro" onChanged={fetchNextBookings} />
                     </div>
                   </div>
@@ -331,26 +364,70 @@ function ProfessionalDashboard() {
           )}
         </div>
 
-        {/* 💬 Chats recientes */}
-        <div className="mb-12">
-          <h2 className="text-2xl font-bold mb-4">💬 Chats recientes</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            {recentChats.length === 0 ? (
-              <p className="text-gray-600">Aún no tenés chats.</p>
-            ) : recentChats.map((c) => (
-              <ChatPreviewCard
-                key={c._id}
-                name={c?.otherUser?.name || c?.otherUser?.email || "Usuario"}
-                lastMessage={c?.lastMessage?.text || "—"}
-                time={c?.lastMessage?.createdAt ? new Date(c.lastMessage.createdAt).toLocaleString() : ""}
-                peerId={c?.otherUser?._id}
-              />
-            ))}
+        {/* 💬 Chats recientes (con paginación 2x página) */}
+        {/* <div className="mb-12">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold">💬 Chats recientes</h2>
+            {recentChats.length > 0 && (
+              <span className="text-sm text-gray-600">{recentChats.length} en total</span>
+            )}
           </div>
-        </div>
+
+          {recentChats.length === 0 ? (
+            <p className="text-gray-600">Aún no tenés chats.</p>
+          ) : (
+            <>
+              <div className="grid md:grid-cols-2 gap-6 mb-6">
+                {chatSlice.map((c) => (
+                  <ChatPreviewCard
+                    key={c._id}
+                    name={c?.otherUser?.name || c?.otherUser?.email || "Usuario"}
+                    lastMessage={c?.lastMessage?.text || "—"}
+                    time={
+                      c?.lastMessage?.createdAt
+                        ? new Date(c.lastMessage.createdAt).toLocaleString()
+                        : ""
+                    }
+                    peerId={c?.otherUser?._id}
+                  />
+                ))}
+              </div>
+
+              {chatPages > 1 && (
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    disabled={chatPage <= 1}
+                    onClick={() => goChatPage(chatPage - 1)}
+                    className={`px-3 py-1 rounded border cursor-pointer ${
+                      chatPage <= 1
+                        ? "opacity-40 cursor-not-allowed"
+                        : "bg-white hover:bg-gray-100"
+                    }`}
+                  >
+                    ←
+                  </button>
+                  <span className="text-sm text-gray-700">
+                    Página {chatPage} de {chatPages}
+                  </span>
+                  <button
+                    disabled={chatPage >= chatPages}
+                    onClick={() => goChatPage(chatPage + 1)}
+                    className={`px-3 py-1 rounded border cursor-pointer ${
+                      chatPage >= chatPages
+                        ? "opacity-40 cursor-not-allowed"
+                        : "bg-white hover:bg-gray-100"
+                    }`}
+                  >
+                    →
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div> */}
 
         {/* Profesionales disponibles ahora */}
-        <div className="text-left">
+        {/* <div className="text-left">
           <div className="flex items-center gap-2 mb-4">
             <h2 className="text-2xl font-bold">🟢 Profesionales disponibles ahora</h2>
             <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
@@ -372,8 +449,14 @@ function ProfessionalDashboard() {
               ))}
             </div>
           )}
-        </div>
+        </div> */}
       </div>
+
+      {/* Dock de chat IG/FB */}
+      <ChatDock
+        chats={recentChats}
+        onOpenChat={(peerId) => navigate(`/chats/${peerId}`)}
+      />
     </section>
   );
 }
