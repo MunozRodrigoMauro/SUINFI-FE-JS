@@ -16,6 +16,8 @@ import ProfessionalDetailPage from "../pages/ProfessionalDetailPage";
 import BookingsPage from "../pages/BookingsPage";            // ⬅️ corregido
 import ProfessionalServicesPage from "../pages/ProfessionalServicesPage";
 import ChatsPage from "../pages/ChatsPage";
+import VerifyEmailPage from "../pages/VerifyEmailPage";
+import VerifyEmailSent from "../pages/VerifyEmailSent";
 
  
 function AppRoutes() {
@@ -144,6 +146,10 @@ function AppRoutes() {
             </PrivateRoute>
           }
         />
+
+        {/* Verificación de correo */}
+        <Route path="/verify-email-sent" element={<VerifyEmailSent />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
 
     </Routes>
 

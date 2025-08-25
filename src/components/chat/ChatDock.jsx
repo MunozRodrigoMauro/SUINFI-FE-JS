@@ -1,6 +1,12 @@
 // src/components/chat/ChatDock.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { X, MessageSquare, Send, ChevronUp, ChevronDown } from "lucide-react";
+import {
+  LuX,
+  LuMessageSquare,
+  LuSend,
+  LuChevronUp,
+  LuChevronDown,
+} from "react-icons/lu";
 import { useAuth } from "../../auth/AuthContext";
 import { socket } from "../../lib/socket";
 import { getOrCreateWith, sendText } from "../../api/chatService";
@@ -95,7 +101,7 @@ export default function ChatDock({ chats = [], onOpenChat }) {
           >
             <div className="relative flex items-center gap-2">
               <div className="relative">
-                <MessageSquare
+                <LuMessageSquare
                   className="h-5 w-5 text-slate-700 transition-all duration-200 ease-out group-hover:-translate-y-0.5 group-hover:scale-110 group-hover:rotate-3 group-hover:text-black"
                   aria-hidden="true"
                 />
@@ -113,9 +119,9 @@ export default function ChatDock({ chats = [], onOpenChat }) {
               </span>
             </div>
             {openList ? (
-              <ChevronDown className="h-5 w-5 text-slate-500 group-hover:text-black transition-colors" />
+              <LuChevronDown className="h-5 w-5 text-slate-500 group-hover:text-black transition-colors" />
             ) : (
-              <ChevronUp className="h-5 w-5 text-slate-500 group-hover:text-black transition-colors" />
+              <LuChevronUp className="h-5 w-5 text-slate-500 group-hover:text-black transition-colors" />
             )}
           </button>
 
@@ -388,7 +394,7 @@ function ChatWindow({ peerId, name, onClose, onOpen, isMobile = false, onLocalLa
             className="text-white/80 hover:text-white"
             title="Cerrar"
           >
-            <X className="h-5 w-5" />
+            <LuX className="h-5 w-5" />
           </button>
         </div>
       </div>
@@ -461,7 +467,7 @@ function ChatWindow({ peerId, name, onClose, onOpen, isMobile = false, onLocalLa
           }`}
           title="Enviar"
         >
-          <Send className="h-4 w-4" />
+          <LuSend className="h-4 w-4" />
           <span className="text-xs font-medium">
             {sending ? "Enviando…" : "Enviar"}
           </span>

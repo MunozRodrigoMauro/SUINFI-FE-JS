@@ -4,7 +4,7 @@ import { useParams, useSearchParams, useLocation, useNavigate, Link } from "reac
 import { useAuth } from "../auth/AuthContext";
 import axiosUser from "../api/axiosUser";
 import { socket } from "../lib/socket";
-import { Search, Send, ChevronLeft, Loader2 } from "lucide-react";
+import { LuSearch, LuSend, LuChevronLeft, LuLoaderCircle } from "react-icons/lu";
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
 
@@ -173,7 +173,7 @@ export default function ChatsPage() {
             <div className="px-4 py-3 border-b font-semibold">Chats</div>
             <div className="px-3 py-2 border-b">
               <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <LuSearch className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
@@ -227,7 +227,7 @@ export default function ChatsPage() {
             <div className="flex items-center justify-between px-4 py-3 bg-[#111827] text-white">
               <div className="flex items-center gap-3 min-w-0">
                 <button onClick={() => navigate(-1)} className="md:hidden rounded bg-white/10 p-1">
-                  <ChevronLeft className="h-5 w-5" />
+                  <LuChevronLeft className="h-5 w-5" />
                 </button>
                 <div className="h-9 w-9 rounded-full bg-white/20 grid place-items-center overflow-hidden">
                   <span className="text-sm font-semibold">
@@ -249,7 +249,7 @@ export default function ChatsPage() {
             <div ref={scrollRef} className="h-[60vh] md:h-[70vh] overflow-y-auto p-4 bg-gray-50">
               {loadingChat ? (
                 <div className="flex items-center justify-center h-full text-gray-600 gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Cargando chat…
+                  <LuLoaderCircle className="h-4 w-4 animate-spin" /> Cargando chat…
                 </div>
               ) : error ? (
                 <div className="text-center text-rose-600">{error}</div>
@@ -299,7 +299,7 @@ export default function ChatsPage() {
                 }`}
                 title="Enviar"
               >
-                <Send className="h-4 w-4" />
+                <LuSend className="h-4 w-4" />
                 <span className="text-xs font-medium">Enviar</span>
               </button>
             </form>

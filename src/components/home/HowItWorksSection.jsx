@@ -1,20 +1,21 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { MapPin, Clock, ShieldCheck } from "lucide-react";
+import { LuMapPin, LuClock, LuShieldCheck } from "react-icons/lu";
+
 
 const steps = [
   {
-    icon: <MapPin className="w-12 h-12" />,
+    icon: <LuMapPin className="w-12 h-12" />,
     title: "Geolocalización inteligente",
     desc: "Encontrá al profesional más cercano según dónde esté en este momento. Como pedir un auto, pero con expertos.",
   },
   {
-    icon: <Clock className="w-12 h-12" />,
+    icon: <LuClock className="w-12 h-12" />,
     title: "Disponibilidad en tiempo real",
     desc: "Ves quién está libre AHORA mismo. Reservá y recibí ayuda al instante, sin esperar turnos.",
   },
   {
-    icon: <ShieldCheck className="w-12 h-12" />,
+    icon: <LuShieldCheck className="w-12 h-12" />,
     title: "Confianza 24/7",
     desc: "Perfiles verificados con CV, reseñas, puntuación y precio claro. Disponible las 24 horas.",
   },
