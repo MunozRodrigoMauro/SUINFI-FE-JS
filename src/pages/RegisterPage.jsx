@@ -19,7 +19,9 @@ function RegisterPage() {
     setLoading(true);
 
     try {
-      await registerUser({ name, email, password, role });
+      //blindar por si alguien manipula el DOM admin
+      const safeRole = role === "professional" ? "professional" : "user";
+      await registerUser({ name, email, password, role: safeRole });
       // 👉 No logueamos: vamos directo a la página que avisa que enviamos el mail
       navigate(`/verify-email-sent?email=${encodeURIComponent(email)}`, { replace: true });
     } catch (err) {
@@ -77,7 +79,7 @@ function RegisterPage() {
           className="w-full border px-4 py-2 rounded bg-white disabled:opacity-60"
           disabled={loading}
         >
-          <option value="admin">👑 Soy Admin</option>
+          {/* <option value="admin">👑 Soy Admin</option> */}
           <option value="user">👤 Soy Cliente</option>
           <option value="professional">🔧 Soy Profesional</option>
         </select>

@@ -55,7 +55,7 @@ async function geocode(q) {
 }
 
 async function reverseGeocode(lat, lng) {
-  const url = `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
+  const url = `https://api/maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
   const res = await fetch(url);
   const data = await res.json();
   const f = (data?.features || [])[0];
@@ -74,8 +74,10 @@ export default function ProfilePage() {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("success");
 
-  // dropdowns
-  const [openAccount, setOpenAccount] = useState(false); // 👈 inicia minimizado
+  // dropdowns (todos minimizados al inicio)
+  const [openAccount, setOpenAccount] = useState(false);
+  const [openAddress, setOpenAddress] = useState(false);
+  const [openAvailability, setOpenAvailability] = useState(false);
 
   // address “humano”
   const [addr, setAddr] = useState({ country: "", state: "", city: "", street: "", number: "", unit: "", postalCode: "" });
@@ -283,7 +285,7 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* CUENTA (reemplazada por tu versión y minimizada al inicio) */}
+          {/* CUENTA */}
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
             <button
               onClick={() => setOpenAccount((o) => !o)}
@@ -291,7 +293,7 @@ export default function ProfilePage() {
             >
               <div>
                 <h2 className="text-lg font-semibold">Cuenta</h2>
-                <p className="text-sm text-gray-500">Nombre, email y rol</p>
+                <p className="text-sm text-gray-500">Nombre, email, rol</p>
               </div>
               <Chevron open={openAccount} />
             </button>
@@ -327,7 +329,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Nueva contraseña</label>
+                    {/* <label className="block text-sm font-medium mb-1">Nueva contraseña</label>
                     <input
                       type="password"
                       name="password"
@@ -335,7 +337,7 @@ export default function ProfilePage() {
                       onChange={onChange}
                       className="w-full border rounded-lg px-4 py-2"
                       placeholder="Mínimo 6 caracteres (opcional)"
-                    />
+                    /> */}
                   </div>
                   <div className="flex justify-end">
                     <button
@@ -355,251 +357,277 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* Ubicación */}
+          {/* UBICACIÓN (colapsable) */}
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-            <div className="px-5 py-4">
-              <div className="mb-3">
-                <label className="block text-sm font-medium mb-1">Buscar dirección</label>
-                <input
-                  value={query}
-                  onChange={onChangeQuery}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => { setIsFocused(false); setTimeout(() => setSuggests([]), 100); }}
-                  placeholder="Ej.: Av. Siempre Viva 742, Springfield"
-                  className="w-full border rounded-lg px-4 py-2"
-                />
-                {isFocused && allowSuggests && suggests.length > 0 && (
-                  <div className="mt-2 rounded-lg border bg-white shadow-sm overflow-hidden max-h-64 overflow-y-auto">
-                    {suggests.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onMouseDown={() => pickSuggestion(s)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+            <button
+              onClick={() => setOpenAddress((o) => !o)}
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+            >
+              <div>
+                <h2 className="text-lg font-semibold pr-40">Buscar dirección</h2>
+                <p className="text-sm text-gray-500">Ingresá una dirección, usá GPS o mové el punto en mapa</p>
               </div>
+              <Chevron open={openAddress} />
+            </button>
 
-              <div className="flex gap-2 mb-4">
-                <button onClick={useGPS} className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black">
-                  Usar GPS
-                </button>
-                <button
-                  onClick={() => {
-                    const line = buildAddressLabel(addr);
-                    if (!line) return;
-                    setAllowSuggests(true);
-                    setQuery(line);
-                  }}
-                  className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
-                >
-                  Geocodificar campos
-                </button>
-              </div>
+            {openAddress && (
+              <div className="px-5 pb-5">
+                <div className="mb-3">
+                  <label className="block text-sm font-medium mb-1">Buscar dirección</label>
+                  <input
+                    value={query}
+                    onChange={onChangeQuery}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => { setIsFocused(false); setTimeout(() => setSuggests([]), 100); }}
+                    placeholder="Ej.: Av. Siempre Viva 742, Springfield"
+                    className="w-full border rounded-lg px-4 py-2"
+                  />
+                  {isFocused && allowSuggests && suggests.length > 0 && (
+                    <div className="mt-2 rounded-lg border bg-white shadow-sm overflow-hidden max-h-64 overflow-y-auto">
+                      {suggests.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onMouseDown={() => pickSuggestion(s)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-              {/* Campos humanos */}
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm mb-1">País *</label>
-                  <input
-                    name="country"
-                    value={addr.country}
-                    onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                    className="w-full border rounded-lg px-4 py-2"
-                  />
+                <div className="flex gap-2 mb-4">
+                  <button onClick={useGPS} className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black">
+                    Usar GPS
+                  </button>
+                  <button
+                    onClick={() => {
+                      const line = buildAddressLabel(addr);
+                      if (!line) return;
+                      setAllowSuggests(true);
+                      setQuery(line);
+                    }}
+                    className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+                  >
+                    Geocodificar campos
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm mb-1">Provincia / Estado *</label>
-                  <input
-                    name="state"
-                    value={addr.state}
-                    onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                    className="w-full border rounded-lg px-4 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm mb-1">Ciudad *</label>
-                  <input
-                    name="city"
-                    value={addr.city}
-                    onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                    className="w-full border rounded-lg px-4 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm mb-1">Código Postal *</label>
-                  <input
-                    name="postalCode"
-                    value={addr.postalCode}
-                    onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                    className="w-full border rounded-lg px-4 py-2"
-                  />
-                </div>
-                <div className="md:col-span-2 grid md:grid-cols-3 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm mb-1">Calle *</label>
+
+                {/* Campos humanos */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm mb-1">País *</label>
                     <input
-                      name="street"
-                      value={addr.street}
+                      name="country"
+                      value={addr.country}
                       onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
                       className="w-full border rounded-lg px-4 py-2"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm mb-1">Número *</label>
+                    <label className="block text-sm mb-1">Provincia / Estado *</label>
                     <input
-                      name="number"
-                      value={addr.number}
+                      name="state"
+                      value={addr.state}
+                      onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
+                      className="w-full border rounded-lg px-4 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1">Ciudad *</label>
+                    <input
+                      name="city"
+                      value={addr.city}
+                      onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
+                      className="w-full border rounded-lg px-4 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1">Código Postal *</label>
+                    <input
+                      name="postalCode"
+                      value={addr.postalCode}
+                      onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
+                      className="w-full border rounded-lg px-4 py-2"
+                    />
+                  </div>
+                  <div className="md:col-span-2 grid md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm mb-1">Calle *</label>
+                      <input
+                        name="street"
+                        value={addr.street}
+                        onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Número *</label>
+                      <input
+                        name="number"
+                        value={addr.number}
+                        onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm mb-1">Depto / Piso / Unidad</label>
+                    <input
+                      name="unit"
+                      value={addr.unit}
                       onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
                       className="w-full border rounded-lg px-4 py-2"
                     />
                   </div>
                 </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm mb-1">Depto / Piso / Unidad</label>
-                  <input
-                    name="unit"
-                    value={addr.unit}
-                    onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                    className="w-full border rounded-lg px-4 py-2"
-                  />
-                </div>
-              </div>
 
-              {/* Mapa con arrastre */}
-              <div className="mt-4">
-                <div className="text-sm text-gray-600 mb-2">
-                  {coords ? (
-                    <>
-                      Coordenadas: <b>{coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}</b>
-                      {label ? <> · {label}</> : null}
-                    </>
-                  ) : (
-                    <>Elegí una sugerencia, usá GPS o arrastrá el punto.</>
-                  )}
+                {/* Mapa con arrastre */}
+                <div className="mt-4">
+                  <div className="text-sm text-gray-600 mb-2">
+                    {coords ? (
+                      <>
+                        Coordenadas: <b>{coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}</b>
+                        {label ? <> · {label}</> : null}
+                      </>
+                    ) : (
+                      <>Elegí una sugerencia, usá GPS o arrastrá el punto.</>
+                    )}
+                  </div>
+                  <div className="rounded-xl overflow-hidden border">
+                    <MapCanvas
+                      center={coords || { lat: -34.6037, lng: -58.3816 }}
+                      markers={[]}
+                      radiusKm={null}
+                      zoom={coords ? 15 : 12}
+                      draggableOrigin
+                      onOriginDragEnd={async ({ lat, lng }) => {
+                        setCoords({ lat, lng });
+                        const nice = await reverseGeocode(lat, lng);
+                        setLabel(nice);
+                        setQuery(nice);
+                        setAllowSuggests(false);
+                        setSuggests([]);
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="rounded-xl overflow-hidden border">
-                  <MapCanvas
-                    center={coords || { lat: -34.6037, lng: -58.3816 }}
-                    markers={[]}
-                    radiusKm={null}
-                    zoom={coords ? 15 : 12}
-                    draggableOrigin
-                    onOriginDragEnd={async ({ lat, lng }) => {
-                      setCoords({ lat, lng });
-                      const nice = await reverseGeocode(lat, lng);
-                      setLabel(nice);
-                      setQuery(nice);
-                      setAllowSuggests(false);
-                      setSuggests([]);
+
+                <div className="flex justify-end mt-4">
+                  <button
+                    onClick={async () => {
+                      setSavingProfile(true);
+                      try { await saveCommon(); }
+                      finally { setSavingProfile(false); }
                     }}
-                  />
+                    disabled={savingProfile}
+                    className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white"
+                  >
+                    {savingProfile ? "Guardando..." : "Guardar ubicación"}
+                  </button>
                 </div>
               </div>
-
-              <div className="flex justify-end mt-4">
-                <button
-                  onClick={async () => {
-                    setSavingProfile(true);
-                    try { await saveCommon(); }
-                    finally { setSavingProfile(false); }
-                  }}
-                  disabled={savingProfile}
-                  className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white"
-                >
-                  {savingProfile ? "Guardando..." : "Guardar ubicación"}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Disponibilidad (solo pro) */}
+          {/* DISPONIBILIDAD (solo pro, colapsable) */}
           {isPro && (
             <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-5 py-4">
-                <h2 className="text-lg font-semibold">Disponibilidad</h2>
-                {loadingAgenda ? (
-                  <p className="text-gray-600 mt-2">Cargando…</p>
-                ) : (
-                  <>
-                    {agendaMsg && <div className="mt-2 text-sm">{agendaMsg}</div>}
-                    <div className="mt-3 space-y-3">
-                      {DAYS.map((d, idx) => (
-                        <div
-                          key={d.key}
-                          className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl bg-white"
+              <button
+                onClick={() => setOpenAvailability((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+              >
+                <div>
+                  <h2 className="text-lg font-semibold">Disponibilidad</h2>
+                  <p className="text-sm text-gray-500">Agenda semanal y horarios</p>
+                </div>
+                <Chevron open={openAvailability} />
+              </button>
+
+              {openAvailability && (
+                <div className="px-5 pb-5">
+                  <h2 className="sr-only">Disponibilidad</h2>
+                  {loadingAgenda ? (
+                    <p className="text-gray-600 mt-2">Cargando…</p>
+                  ) : (
+                    <>
+                      {agendaMsg && <div className="mt-2 text-sm">{agendaMsg}</div>}
+                      <div className="mt-3 space-y-3">
+                        {DAYS.map((d, idx) => (
+                          <div
+                            key={d.key}
+                            className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl bg-white"
+                          >
+                            <div className="flex items-center gap-3 min-w-[130px]">
+                              <input
+                                type="checkbox"
+                                checked={rows[idx].active}
+                                onChange={(e) =>
+                                  setRows((a) =>
+                                    a.map((r, i) => (i === idx ? { ...r, active: e.target.checked } : r))
+                                  )
+                                }
+                              />
+                              <span>{d.label}</span>
+                            </div>
+                            <div className="flex items-center gap-3 sm:ml-auto">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">De</span>
+                                <input
+                                  type="time"
+                                  step="900"
+                                  value={rows[idx].from}
+                                  disabled={!rows[idx].active}
+                                  onChange={(e) =>
+                                    setRows((a) =>
+                                      a.map((r, i) => (i === idx ? { ...r, from: e.target.value } : r))
+                                    )
+                                  }
+                                  className="border rounded-lg px-3 py-2 text-sm"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">a</span>
+                                <input
+                                  type="time"
+                                  step="900"
+                                  value={rows[idx].to}
+                                  disabled={!rows[idx].active}
+                                  onChange={(e) =>
+                                    setRows((a) =>
+                                      a.map((r, i) => (i === idx ? { ...r, to: e.target.value } : r))
+                                    )
+                                  }
+                                  className="border rounded-lg px-3 py-2 text-sm"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-end gap-3 mt-4">
+                        <button
+                          onClick={() =>
+                            setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))
+                          }
+                          className="px-4 py-2 rounded border"
                         >
-                          <div className="flex items-center gap-3 min-w-[130px]">
-                            <input
-                              type="checkbox"
-                              checked={rows[idx].active}
-                              onChange={(e) =>
-                                setRows((a) =>
-                                  a.map((r, i) => (i === idx ? { ...r, active: e.target.checked } : r))
-                                )
-                              }
-                            />
-                            <span>{d.label}</span>
-                          </div>
-                          <div className="flex items-center gap-3 sm:ml-auto">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-600">De</span>
-                              <input
-                                type="time"
-                                step="900"
-                                value={rows[idx].from}
-                                disabled={!rows[idx].active}
-                                onChange={(e) =>
-                                  setRows((a) =>
-                                    a.map((r, i) => (i === idx ? { ...r, from: e.target.value } : r))
-                                  )
-                                }
-                                className="border rounded-lg px-3 py-2 text-sm"
-                              />
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-600">a</span>
-                              <input
-                                type="time"
-                                step="900"
-                                value={rows[idx].to}
-                                disabled={!rows[idx].active}
-                                onChange={(e) =>
-                                  setRows((a) =>
-                                    a.map((r, i) => (i === idx ? { ...r, to: e.target.value } : r))
-                                  )
-                                }
-                                className="border rounded-lg px-3 py-2 text-sm"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex justify-end gap-3 mt-4">
-                      <button
-                        onClick={() =>
-                          setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))
-                        }
-                        className="px-4 py-2 rounded border"
-                      >
-                        Restablecer
-                      </button>
-                      <button
-                        onClick={onSaveAgenda}
-                        disabled={savingAgenda}
-                        className="px-4 py-2 rounded bg-[#0a0e17] text-white"
-                      >
-                        {savingAgenda ? "Guardando…" : "Guardar agenda"}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+                          Restablecer
+                        </button>
+                        <button
+                          onClick={onSaveAgenda}
+                          disabled={savingAgenda}
+                          className="px-4 py-2 rounded bg-[#0a0e17] text-white"
+                        >
+                          {savingAgenda ? "Guardando…" : "Guardar agenda"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

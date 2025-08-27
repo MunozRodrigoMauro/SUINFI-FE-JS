@@ -18,6 +18,12 @@ export function joinUserRoom(userId) {
   socket.emit("joinUser", userId);
 }
 
+export function leaveUserRoom(userId) {
+  if (!userId) return;
+  if (!socket.connected) return;
+  socket.emit("leave:user", { userId }); // nombre de evento de tu BE
+}
+
 // logs dev
 socket.on("connect", () => console.log("✅ socket connected", socket.id));
 socket.on("disconnect", (reason) =>

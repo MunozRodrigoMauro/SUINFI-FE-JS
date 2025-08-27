@@ -10,9 +10,8 @@ const axiosUser = axios.create({
 // Interceptor: agrega JWT excepto en /auth/verify-email/*
 axiosUser.interceptors.request.use((config) => {
   try {
-    const url = `${config.baseURL?.replace(/\/$/, "") || ""}${config.url || ""}`;
-    const isVerifyEmail =
-      /\/api\/auth\/verify-email\/[A-Za-z0-9]+$/.test(url);
+    const full = `${config.baseURL || ""}${config.url || ""}`;
+    const isVerifyEmail = full.includes("/auth/verify-email/");
 
     if (!isVerifyEmail) {
       const token = localStorage.getItem("token");

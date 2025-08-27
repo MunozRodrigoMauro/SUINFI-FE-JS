@@ -145,10 +145,19 @@ export default function ChatsPage() {
     try {
       const { data } = await axiosUser.post(`${API}/chats/${chat._id}/messages`, { text });
       const real = data?.message;
-      setMessages((prev) => prev.map((m) => (m._id === tempId ? real || m : m)));
+
+      setMessages(prev => {
+    // 1) sacamos el temporal
+    const noTemp = prev.filter(m => m._id !== tempId);
+    if (!real) return noTemp;
+    // 2) si ya lo agregó el socket, no lo dupliques
+    const exists = noTemp.some(m => String(m._id) === String(real._id));
+    return exists ? noTemp : [...noTemp, real];
+      });
+
       fetchChats();
     } catch {
-      setMessages((prev) => prev.map((m) => (m._id === tempId ? { ...m, error: true } : m)));
+      setMessages(prev => prev.map(m => (m._id === tempId ? { ...m, error: true } : m)));
     } finally {
       setSending(false);
     }

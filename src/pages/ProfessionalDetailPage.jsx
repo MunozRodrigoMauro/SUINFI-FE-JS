@@ -4,7 +4,7 @@ import { getProfessionalById } from "../api/professionalService";
 import { createBooking } from "../api/bookingService";
 import axiosUser from "../api/axiosUser";
 
-// ✅ NUEVO: imports visuales (no tocan la lógica)
+// ✅ Visual
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
 
@@ -22,21 +22,71 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
+  const hasServices = (services || []).length > 0;
+
+  // helpers fecha/hora
+  const DAYS_ES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+  const nextDays = useMemo(() => {
+    const arr = [];
+    const today = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const value = d.toISOString().slice(0, 10); // YYYY-MM-DD
+      const label = d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
+      arr.push({ value, label });
+    }
+    return arr;
+  }, []);
+
+  const genTimeSlots = (start = "09:00", end = "18:00", stepMin = 30) => {
+    const [sh, sm] = String(start).split(":").map(Number);
+    const [eh, em] = String(end).split(":").map(Number);
+    let t = sh * 60 + sm;
+    const endT = eh * 60 + em;
+    const out = [];
+    while (t <= endT) {
+      const h = String(Math.floor(t / 60)).padStart(2, "0");
+      const m = String(t % 60).padStart(2, "0");
+      out.push(`${h}:${m}`);
+      t += stepMin;
+    }
+    return out;
+  };
+
+  // si hay agenda semanal, usar el rango del día elegido; si no, default 09-18
+  const scheduleForDay = useMemo(() => {
+    if (!date) return null;
+    const dow = new Date(date).getDay(); // 0..6
+    const key = DAYS_ES[dow]; // "lunes", etc.
+    return professional?.availabilitySchedule?.[key] || null;
+  }, [date, professional?.availabilitySchedule]);
+
+  const timeOptions = useMemo(() => {
+    const from = scheduleForDay?.from || "09:00";
+    const to = scheduleForDay?.to || "18:00";
+    return genTimeSlots(from, to, 30);
+  }, [scheduleForDay]);
+
   useEffect(() => {
     if (!open) return;
-    const first = services?.[0]?._id || "";
-    setServiceId(first);
     setDate("");
     setTime("");
     setNote("");
     setMsg("");
-  }, [open, services]);
+    setServiceId(hasServices ? services[0]._id : "");
+  }, [open, services, hasServices]);
 
   if (!open) return null;
 
   const submit = async (e) => {
     e.preventDefault();
     setMsg("");
+    if (!hasServices) {
+      setMsg("Este profesional no tiene servicios cargados.");
+      return;
+    }
     if (!serviceId || !date || !time) {
       setMsg("Completá servicio, fecha y hora.");
       return;
@@ -46,14 +96,14 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
       const payload = {
         professionalId: professional._id,
         serviceId,
-        date,
-        time,
+        date, // YYYY-MM-DD
+        time, // HH:mm
         note: note?.trim() || "",
       };
       const res = await createBooking(payload);
       onCreated?.(res?.booking);
       onClose();
-    } catch (err) {
+    } catch {
       setMsg("No se pudo crear la reserva. Probá de nuevo.");
     } finally {
       setSaving(false);
@@ -75,42 +125,95 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
             </div>
           )}
 
+          {/* Servicio */}
           <div>
             <label className="block text-sm font-medium mb-1">Servicio</label>
-            <select
-              value={serviceId}
-              onChange={(e) => setServiceId(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-            >
-              {(services || []).map((s) => (
-                <option key={s._id} value={s._id}>
-                  {s.name}
-                </option>
+
+            {hasServices ? (
+              <select
+                value={serviceId}
+                onChange={(e) => setServiceId(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2"
+              >
+                {(services || []).map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.name}{s.price ? ` — $${s.price}` : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="w-full border rounded-lg px-3 py-2 bg-amber-50 border-amber-200 text-amber-800 text-sm">
+                Este profesional aún no cargó servicios.
+              </div>
+            )}
+          </div>
+
+          {/* Fecha (chips) */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Fecha</label>
+            <div className="flex gap-2 overflow-x-auto py-1">
+              {nextDays.map((d) => (
+                <button
+                  type="button"
+                  key={d.value}
+                  onClick={() => { setDate(d.value); setTime(""); }}
+                  className={`shrink-0 px-3 py-1.5 rounded-full border text-sm
+                    ${date === d.value ? "bg-[#0a0e17] text-white border-[#0a0e17]" : "bg-white hover:bg-gray-50"}`}
+                  title={new Date(d.value).toLocaleDateString()}
+                >
+                  {d.label}
+                </button>
               ))}
-            </select>
+            </div>
+            {/* Accesibilidad: input nativo oculto visualmente (opcional) */}
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => { setDate(e.target.value); setTime(""); }}
+              className="sr-only"
+              aria-hidden
+              tabIndex={-1}
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">Fecha</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Hora</label>
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2"
-              />
-            </div>
+          {/* Hora (chips) */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Hora</label>
+            {!date ? (
+              <div className="text-sm text-gray-500">Elegí primero una fecha.</div>
+            ) : (
+              <>
+                {scheduleForDay && (
+                  <div className="text-xs text-gray-600 mb-1">
+                    Atiende de {scheduleForDay.from} a {scheduleForDay.to}.
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1 border rounded-lg">
+                  {timeOptions.map((t) => (
+                    <button
+                      type="button"
+                      key={t}
+                      onClick={() => setTime(t)}
+                      className={`px-2.5 py-1.5 rounded-md text-sm border
+                        ${time === t ? "bg-[#0a0e17] text-white border-[#0a0e17]" : "bg-white hover:bg-gray-50"}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="sr-only"
+              aria-hidden
+              tabIndex={-1}
+            />
           </div>
 
+          {/* Nota */}
           <div>
             <label className="block text-sm font-medium mb-1">Nota (opcional)</label>
             <textarea
@@ -128,8 +231,11 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
             </button>
             <button
               type="submit"
-              disabled={saving}
-              className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60"
+              disabled={saving || !hasServices || !serviceId || !date || !time}
+              className={`px-4 py-2 rounded-lg text-white
+                ${saving || !hasServices || !serviceId || !date || !time
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-[#0a0e17] hover:bg-black/80"}`}
             >
               {saving ? "Creando…" : "Confirmar reserva"}
             </button>
@@ -197,11 +303,10 @@ export default function ProfessionalDetailPage() {
 
   return (
     <>
-      {/* ✅ Navbar + BackBar iguales al resto, sin tocar lógica */}
+      {/* Navbar + BackBar */}
       <Navbar />
       <BackBar title={name} subtitle={email} />
 
-      {/* Quitamos el pt-24 para evitar el hueco; dejamos el ancho controlado adentro */}
       <section className="min-h-screen bg-white text-[#0a0e17] pb-16 pt-20">
         <div className="max-w-4xl mx-auto px-4">
           {/* Header */}
@@ -254,7 +359,13 @@ export default function ProfessionalDetailPage() {
                 )}
                 <button
                   onClick={() => setOpenModal(true)}
-                  className="ml-2 px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black"
+                  disabled={servicesResolved.length === 0}
+                  title={servicesResolved.length === 0 ? "Este profesional no cargó servicios" : "Reservar"}
+                  className={`ml-2 px-4 py-2 rounded-lg text-white ${
+                    servicesResolved.length === 0
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-[#0a0e17] hover:bg-black"
+                  }`}
                 >
                   Reservar
                 </button>
