@@ -8,8 +8,12 @@ export const createProfessionalProfile = async (payload) => {
 };
 
 export const setAvailableNow = async (isAvailableNow) => {
-  const { data } = await axiosUser.patch(`${API}/professionals/availability`, { isAvailableNow });
-  return data;
+  const { data } = await axiosUser.patch(
+    `${API}/professionals/availability`,
+    { isAvailableNow }
+  );
+  // el BE ya retorna { isAvailableNow, availabilityStrategy }
+  return { isAvailableNow: !!data.isAvailableNow, mode: data.availabilityStrategy };
 };
 
 export const updateAvailabilitySchedule = async (availabilitySchedule) => {
@@ -51,4 +55,9 @@ export const getNearbyProfessionals = async (lat, lng, maxDistance = 5000, extra
 
 export const updateMyLocation = async (lat, lng) => {
   return axiosUser.patch(`${API}/professionals/me/location`, { lat, lng });
+};
+
+export const setAvailabilityMode = async (mode) => {
+  const { data } = await axiosUser.patch(`${API}/professionals/availability-mode`, { mode });
+  return data; // { message, availabilityStrategy }
 };

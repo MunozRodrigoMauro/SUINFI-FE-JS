@@ -2,11 +2,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
-import { updateAvailabilitySchedule, getProfessionals } from "../api/professionalService";
 import { getMyProfile, updateMyProfile } from "../api/userService";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import MapCanvas from "../components/map/ProfessionalRequest/MapCanvas";
+import {
+  updateAvailabilitySchedule,
+  setAvailabilityMode,
+  updateMyProfessional,
+  updateMyLocation,
+  getMyProfessional,
+} from "../api/professionalService";
 
 const MAP_KEY = import.meta.env.VITE_MAP_API_KEY;
 
@@ -27,11 +33,7 @@ const buildAddressLabel = (a) =>
 
 function Chevron({ open }) {
   return (
-    <svg
-      className={`h-5 w-5 transition-transform ${open ? "rotate-180" : "rotate-0"}`}
-      viewBox="0 0 20 20"
-      fill="currentColor"
-    >
+    <svg className={`h-5 w-5 transition-transform ${open ? "rotate-180" : "rotate-0"}`} viewBox="0 0 20 20" fill="currentColor">
       <path
         fillRule="evenodd"
         d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
@@ -55,7 +57,7 @@ async function geocode(q) {
 }
 
 async function reverseGeocode(lat, lng) {
-  const url = `https://api/maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
+  const url = `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
   const res = await fetch(url);
   const data = await res.json();
   const f = (data?.features || [])[0];
@@ -65,7 +67,9 @@ async function reverseGeocode(lat, lng) {
 export default function ProfilePage() {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
-  const isPro = user?.role === "professional";
+
+  // si existe Professional para este user
+  const [hasProfessional, setHasProfessional] = useState(false);
 
   // cuenta
   const [form, setForm] = useState({ name: "", email: "", role: "", password: "" });
@@ -74,15 +78,23 @@ export default function ProfilePage() {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("success");
 
-  // dropdowns (todos minimizados al inicio)
+  // dropdowns
   const [openAccount, setOpenAccount] = useState(false);
   const [openAddress, setOpenAddress] = useState(false);
   const [openAvailability, setOpenAvailability] = useState(false);
 
   // address “humano”
-  const [addr, setAddr] = useState({ country: "", state: "", city: "", street: "", number: "", unit: "", postalCode: "" });
+  const [addr, setAddr] = useState({
+    country: "",
+    state: "",
+    city: "",
+    street: "",
+    number: "",
+    unit: "",
+    postalCode: "",
+  });
 
-  // buscador + dropdown controlado por foco/escritura
+  // buscador
   const [query, setQuery] = useState("");
   const [suggests, setSuggests] = useState([]);
   const [isFocused, setIsFocused] = useState(false);
@@ -94,12 +106,14 @@ export default function ProfilePage() {
   const [label, setLabel] = useState("");
 
   // agenda
-  const [rows, setRows] = useState(() => DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })));
+  const [rows, setRows] = useState(() =>
+    DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" }))
+  );
   const [loadingAgenda, setLoadingAgenda] = useState(true);
   const [savingAgenda, setSavingAgenda] = useState(false);
   const [agendaMsg, setAgendaMsg] = useState("");
 
-  // cargar perfil
+  // cargar perfil + professional
   useEffect(() => {
     (async () => {
       try {
@@ -132,16 +146,14 @@ export default function ProfilePage() {
         setLoadingProfile(false);
       }
     })();
-  }, []);
 
-  // agenda prefill
-  useEffect(() => {
     (async () => {
       try {
-        const raw = await getProfessionals();
-        const arr = Array.isArray(raw) ? raw : raw?.items || [];
-        const myId = user?.id || user?._id;
-        const mine = arr.find((p) => p?.user?._id === myId);
+        const mine = await getMyProfessional();
+        const exists = !!mine?._id;
+        setHasProfessional(exists);
+
+        // Prefill agenda si existe
         if (mine?.availabilitySchedule) {
           const map = mine.availabilitySchedule;
           setRows((prev) =>
@@ -152,30 +164,45 @@ export default function ProfilePage() {
             })
           );
         }
+      } catch {
+        setHasProfessional(false);
       } finally {
         setLoadingAgenda(false);
       }
     })();
-  }, [user?.id, user?._id]);
+  }, []);
 
-  useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(""), 2500); return () => clearTimeout(t); } }, [msg]);
-  useEffect(() => { if (agendaMsg) { const t = setTimeout(() => setAgendaMsg(""), 2500); return () => clearTimeout(t); } }, [agendaMsg]);
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [msg]);
 
-  // escritura del input → habilita dropdown
+  useEffect(() => {
+    if (!agendaMsg) return;
+    const t = setTimeout(() => setAgendaMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [agendaMsg]);
+
   const onChangeQuery = (e) => {
     setAllowSuggests(true);
     setQuery(e.target.value);
   };
 
-  // autocomplete (solo si allowSuggests && focused)
+  // autocomplete
   useEffect(() => {
     window.clearTimeout(debounceId.current);
-    if (!isFocused || !allowSuggests || !query?.trim()) { setSuggests([]); return; }
+    if (!isFocused || !allowSuggests || !query?.trim()) {
+      setSuggests([]);
+      return;
+    }
     debounceId.current = window.setTimeout(async () => {
       try {
         const list = await geocode(query);
         setSuggests(list.slice(0, 8));
-      } catch { setSuggests([]); }
+      } catch {
+        setSuggests([]);
+      }
     }, 300);
   }, [query, isFocused, allowSuggests]);
 
@@ -206,6 +233,7 @@ export default function ProfilePage() {
     );
   };
 
+  // Guardado + sync User + (si existe) Professional (address + GeoJSON)
   const saveCommon = async () => {
     const clean = {
       country: addr.country.trim(),
@@ -221,11 +249,36 @@ export default function ProfilePage() {
       password: form.password.trim() || undefined,
       address: {
         ...clean,
-        ...(coords ? { label: label || buildAddressLabel(clean), location: { lat: coords.lat, lng: coords.lng } } : {}),
+        ...(coords
+          ? { label: label || buildAddressLabel(clean), location: { lat: coords.lat, lng: coords.lng } }
+          : {}),
       },
     };
+
+    // 1) User
     const res = await updateMyProfile(payload);
-    setUser((p) => ({ ...p, ...res.user }));
+    const updated = res?.user || res; // soporta ambas formas de respuesta
+    setUser((p) => ({ ...p, ...updated }));
+
+    // 2) Professional (si existe)
+    if (hasProfessional) {
+      try {
+        await updateMyProfessional({
+          address: {
+            ...clean,
+            label: label || buildAddressLabel(clean),
+            ...(coords ? { location: { lat: coords.lat, lng: coords.lng } } : {}),
+          },
+        });
+        if (coords) {
+          // clave para /nearby (GeoJSON Point [lng, lat])
+          await updateMyLocation(coords.lat, coords.lng);
+        }
+      } catch (e) {
+        console.error("sync Professional addr/loc error", e);
+      }
+    }
+
     setMsgType("success");
     setMsg("✅ Cambios guardados");
   };
@@ -237,21 +290,33 @@ export default function ProfilePage() {
 
   const invalids = useMemo(() => {
     const bad = [];
-    rows.forEach((r) => { if (!r.active) return; if (!r.from || !r.to || r.from >= r.to) bad.push(r.key); });
+    rows.forEach((r) => {
+      if (!r.active) return;
+      if (!r.from || !r.to || r.from >= r.to) bad.push(r.key);
+    });
     return bad;
   }, [rows]);
 
   const onSaveAgenda = async () => {
-    if (invalids.length) { setAgendaMsg("Revisá los horarios: inicio < fin."); return; }
+    if (invalids.length) {
+      setAgendaMsg("Revisá los horarios: inicio < fin.");
+      return;
+    }
     setSavingAgenda(true);
     try {
       await updateAvailabilitySchedule(
-        rows.reduce((acc, r) => { if (r.active) acc[r.key] = { from: r.from, to: r.to }; return acc; }, {})
+        rows.reduce((acc, r) => {
+          if (r.active) acc[r.key] = { from: r.from, to: r.to };
+          return acc;
+        }, {})
       );
-      setAgendaMsg("✅ Agenda guardada correctamente.");
+      await setAvailabilityMode("schedule");
+      setAgendaMsg("✅ Agenda guardada y modo horario activo.");
     } catch {
       setAgendaMsg("No se pudo guardar la agenda.");
-    } finally { setSavingAgenda(false); }
+    } finally {
+      setSavingAgenda(false);
+    }
   };
 
   const essentialsOk = useMemo(() => {
@@ -267,7 +332,7 @@ export default function ProfilePage() {
       <Navbar />
       <BackBar
         title="Mi perfil"
-        subtitle={isPro ? "Editá tu cuenta, ubicación y disponibilidad" : "Editá tu cuenta y ubicación"}
+        subtitle={hasProfessional ? "Editá tu cuenta, ubicación y disponibilidad" : "Editá tu cuenta y ubicación"}
       />
       <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-24 px-4">
         <div className="max-w-3xl mx-auto">
@@ -287,10 +352,7 @@ export default function ProfilePage() {
 
           {/* CUENTA */}
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-            <button
-              onClick={() => setOpenAccount((o) => !o)}
-              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
-            >
+            <button onClick={() => setOpenAccount((o) => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50">
               <div>
                 <h2 className="text-lg font-semibold">Cuenta</h2>
                 <p className="text-sm text-gray-500">Nombre, email, rol</p>
@@ -313,38 +375,22 @@ export default function ProfilePage() {
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Email</label>
-                      <input
-                        value={form.email}
-                        disabled
-                        className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600"
-                      />
+                      <input value={form.email} disabled className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Rol</label>
-                      <input
-                        value={form.role}
-                        disabled
-                        className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600 capitalize"
-                      />
+                      <input value={form.role} disabled className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600 capitalize" />
                     </div>
-                  </div>
-                  <div>
-                    {/* <label className="block text-sm font-medium mb-1">Nueva contraseña</label>
-                    <input
-                      type="password"
-                      name="password"
-                      value={form.password}
-                      onChange={onChange}
-                      className="w-full border rounded-lg px-4 py-2"
-                      placeholder="Mínimo 6 caracteres (opcional)"
-                    /> */}
                   </div>
                   <div className="flex justify-end">
                     <button
                       onClick={async () => {
                         setSavingProfile(true);
-                        try { await saveCommon(); }
-                        finally { setSavingProfile(false); }
+                        try {
+                          await saveCommon();
+                        } finally {
+                          setSavingProfile(false);
+                        }
                       }}
                       disabled={savingProfile}
                       className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60"
@@ -357,12 +403,9 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* UBICACIÓN (colapsable) */}
+          {/* UBICACIÓN */}
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-            <button
-              onClick={() => setOpenAddress((o) => !o)}
-              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
-            >
+            <button onClick={() => setOpenAddress((o) => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50">
               <div>
                 <h2 className="text-lg font-semibold pr-40">Buscar dirección</h2>
                 <p className="text-sm text-gray-500">Ingresá una dirección, usá GPS o mové el punto en mapa</p>
@@ -378,19 +421,17 @@ export default function ProfilePage() {
                     value={query}
                     onChange={onChangeQuery}
                     onFocus={() => setIsFocused(true)}
-                    onBlur={() => { setIsFocused(false); setTimeout(() => setSuggests([]), 100); }}
+                    onBlur={() => {
+                      setIsFocused(false);
+                      setTimeout(() => setSuggests([]), 100);
+                    }}
                     placeholder="Ej.: Av. Siempre Viva 742, Springfield"
                     className="w-full border rounded-lg px-4 py-2"
                   />
                   {isFocused && allowSuggests && suggests.length > 0 && (
                     <div className="mt-2 rounded-lg border bg-white shadow-sm overflow-hidden max-h-64 overflow-y-auto">
                       {suggests.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onMouseDown={() => pickSuggestion(s)}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                        >
+                        <button key={s.id} type="button" onMouseDown={() => pickSuggestion(s)} className="w-full text-left px-3 py-2 hover:bg-gray-50">
                           {s.label}
                         </button>
                       ))}
@@ -419,68 +460,33 @@ export default function ProfilePage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm mb-1">País *</label>
-                    <input
-                      name="country"
-                      value={addr.country}
-                      onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <input name="country" value={addr.country} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
                     <label className="block text-sm mb-1">Provincia / Estado *</label>
-                    <input
-                      name="state"
-                      value={addr.state}
-                      onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <input name="state" value={addr.state} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
-                    <label className="block text-sm mb-1">Ciudad *</label>
-                    <input
-                      name="city"
-                      value={addr.city}
-                      onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <label className="block text sm mb-1">Ciudad *</label>
+                    <input name="city" value={addr.city} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
-                    <label className="block text-sm mb-1">Código Postal *</label>
-                    <input
-                      name="postalCode"
-                      value={addr.postalCode}
-                      onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <label className="block text sm mb-1">Código Postal *</label>
+                    <input name="postalCode" value={addr.postalCode} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div className="md:col-span-2 grid md:grid-cols-3 gap-4">
                     <div className="md:col-span-2">
                       <label className="block text-sm mb-1">Calle *</label>
-                      <input
-                        name="street"
-                        value={addr.street}
-                        onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                        className="w-full border rounded-lg px-4 py-2"
-                      />
+                      <input name="street" value={addr.street} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
                     </div>
                     <div>
                       <label className="block text-sm mb-1">Número *</label>
-                      <input
-                        name="number"
-                        value={addr.number}
-                        onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                        className="w-full border rounded-lg px-4 py-2"
-                      />
+                      <input name="number" value={addr.number} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
                     </div>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm mb-1">Depto / Piso / Unidad</label>
-                    <input
-                      name="unit"
-                      value={addr.unit}
-                      onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
+                    <input name="unit" value={addr.unit} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                 </div>
 
@@ -519,8 +525,11 @@ export default function ProfilePage() {
                   <button
                     onClick={async () => {
                       setSavingProfile(true);
-                      try { await saveCommon(); }
-                      finally { setSavingProfile(false); }
+                      try {
+                        await saveCommon();
+                      } finally {
+                        setSavingProfile(false);
+                      }
                     }}
                     disabled={savingProfile}
                     className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white"
@@ -532,13 +541,10 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* DISPONIBILIDAD (solo pro, colapsable) */}
-          {isPro && (
+          {/* DISPONIBILIDAD (solo si existe Professional) */}
+          {hasProfessional && (
             <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
-              <button
-                onClick={() => setOpenAvailability((o) => !o)}
-                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
-              >
+              <button onClick={() => setOpenAvailability((o) => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50">
                 <div>
                   <h2 className="text-lg font-semibold">Disponibilidad</h2>
                   <p className="text-sm text-gray-500">Agenda semanal y horarios</p>
@@ -556,18 +562,13 @@ export default function ProfilePage() {
                       {agendaMsg && <div className="mt-2 text-sm">{agendaMsg}</div>}
                       <div className="mt-3 space-y-3">
                         {DAYS.map((d, idx) => (
-                          <div
-                            key={d.key}
-                            className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl bg-white"
-                          >
+                          <div key={d.key} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl bg-white">
                             <div className="flex items-center gap-3 min-w-[130px]">
                               <input
                                 type="checkbox"
                                 checked={rows[idx].active}
                                 onChange={(e) =>
-                                  setRows((a) =>
-                                    a.map((r, i) => (i === idx ? { ...r, active: e.target.checked } : r))
-                                  )
+                                  setRows((a) => a.map((r, i) => (i === idx ? { ...r, active: e.target.checked } : r)))
                                 }
                               />
                               <span>{d.label}</span>
@@ -580,11 +581,7 @@ export default function ProfilePage() {
                                   step="900"
                                   value={rows[idx].from}
                                   disabled={!rows[idx].active}
-                                  onChange={(e) =>
-                                    setRows((a) =>
-                                      a.map((r, i) => (i === idx ? { ...r, from: e.target.value } : r))
-                                    )
-                                  }
+                                  onChange={(e) => setRows((a) => a.map((r, i) => (i === idx ? { ...r, from: e.target.value } : r)))}
                                   className="border rounded-lg px-3 py-2 text-sm"
                                 />
                               </div>
@@ -595,11 +592,7 @@ export default function ProfilePage() {
                                   step="900"
                                   value={rows[idx].to}
                                   disabled={!rows[idx].active}
-                                  onChange={(e) =>
-                                    setRows((a) =>
-                                      a.map((r, i) => (i === idx ? { ...r, to: e.target.value } : r))
-                                    )
-                                  }
+                                  onChange={(e) => setRows((a) => a.map((r, i) => (i === idx ? { ...r, to: e.target.value } : r)))}
                                   className="border rounded-lg px-3 py-2 text-sm"
                                 />
                               </div>
@@ -609,18 +602,12 @@ export default function ProfilePage() {
                       </div>
                       <div className="flex justify-end gap-3 mt-4">
                         <button
-                          onClick={() =>
-                            setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))
-                          }
+                          onClick={() => setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))}
                           className="px-4 py-2 rounded border"
                         >
                           Restablecer
                         </button>
-                        <button
-                          onClick={onSaveAgenda}
-                          disabled={savingAgenda}
-                          className="px-4 py-2 rounded bg-[#0a0e17] text-white"
-                        >
+                        <button onClick={onSaveAgenda} disabled={savingAgenda} className="px-4 py-2 rounded bg-[#0a0e17] text-white">
                           {savingAgenda ? "Guardando…" : "Guardar agenda"}
                         </button>
                       </div>
@@ -635,11 +622,7 @@ export default function ProfilePage() {
             <button
               onClick={() => navigate("/dashboard/professional")}
               disabled={!essentialsOk}
-              className={`px-5 py-2 rounded-lg ${
-                essentialsOk
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
-              }`}
+              className={`px-5 py-2 rounded-lg ${essentialsOk ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-gray-200 text-gray-500 cursor-not-allowed"}`}
             >
               Ir a mi panel
             </button>

@@ -7,7 +7,6 @@ import {
   getAvailableNowProfessionals,
 } from "../api/professionalService";
 import { socket } from "../lib/socket";
-import ChatPreviewCard from "../components/chat/ChatPreviewCard";
 import BookingStatusBadge from "../components/booking/BookingStatusBadge";
 import BookingActions from "../components/booking/BookingActions";
 import { getBookingsForMe } from "../api/bookingService";
@@ -32,10 +31,13 @@ function ProfessionalDashboard() {
       setLoadingOnline(true);
       const list = await getAvailableNowProfessionals();
       setOnlinePros(list || []);
-      const me = (list || []).find(
-        (p) => p?.user?._id === (user?.id || user?._id)
-      );
-      setIsAvailableNow(Boolean(me));
+      // 👇 Evitar pisar el switch si estamos guardando
+      if (!savingNow) {
+        const me = (list || []).find(
+          (p) => p?.user?._id === (user?.id || user?._id)
+        );
+        setIsAvailableNow(Boolean(me));
+      }
     } finally {
       setLoadingOnline(false);
     }
@@ -114,14 +116,24 @@ function ProfessionalDashboard() {
     try {
       setSavingNow(true);
       const next = !isAvailableNow;
+
+      // Optimista
       setIsAvailableNow(next);
       localStorage.setItem(
         "suinfi:availabilityNow",
         JSON.stringify({ v: next, who: (user?.id || user?._id) })
       );
+
+      // Persistir en BE (este endpoint ya setea availabilityStrategy = "manual")
       await setAvailableNow(next);
+
+      // Confirmar + feedback (el socket corrige si difiere)
+      setIsAvailableNow(next);
+      setLastUpdated(new Date());
+      softMessage(next ? "Ahora figurás como disponible." : "Modo disponible desactivado.");
     } catch (e) {
       console.error(e);
+      // Revertir
       setIsAvailableNow((prev) => !prev);
       softMessage("No se pudo actualizar el estado.");
     } finally {
@@ -180,27 +192,9 @@ function ProfessionalDashboard() {
     return () => { mounted = false; };
   }, []);
 
-  // 💬 Chats recientes + paginación (2 por página) — igual que en UserDash
+  // 💬 Chats recientes (sin UI por ahora, pero necesario para el dock)
   const [recentChats, setRecentChats] = useState([]);
-  const RECENT_CHATS_PAGE_SIZE = 2;
-  const [chatPage, setChatPage] = useState(1);
-  const [chatPages, setChatPages] = useState(1);
-  const [chatSlice, setChatSlice] = useState([]);
-
   useEffect(() => { (async () => setRecentChats(await fetchMyChats()))(); }, []);
-  useEffect(() => {
-    const total = recentChats.length;
-    const pgs = Math.max(1, Math.ceil(total / RECENT_CHATS_PAGE_SIZE));
-    setChatPages(pgs);
-    setChatPage(1);
-    setChatSlice(recentChats.slice(0, RECENT_CHATS_PAGE_SIZE));
-  }, [recentChats]);
-  const goChatPage = (n) => {
-    const p = Math.min(Math.max(1, n), chatPages);
-    const start = (p - 1) * RECENT_CHATS_PAGE_SIZE;
-    setChatPage(p);
-    setChatSlice(recentChats.slice(start, start + RECENT_CHATS_PAGE_SIZE));
-  };
 
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] py-24 px-4">
@@ -363,93 +357,6 @@ function ProfessionalDashboard() {
             </div>
           )}
         </div>
-
-        {/* 💬 Chats recientes (con paginación 2x página) */}
-        {/* <div className="mb-12">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold">💬 Chats recientes</h2>
-            {recentChats.length > 0 && (
-              <span className="text-sm text-gray-600">{recentChats.length} en total</span>
-            )}
-          </div>
-
-          {recentChats.length === 0 ? (
-            <p className="text-gray-600">Aún no tenés chats.</p>
-          ) : (
-            <>
-              <div className="grid md:grid-cols-2 gap-6 mb-6">
-                {chatSlice.map((c) => (
-                  <ChatPreviewCard
-                    key={c._id}
-                    name={c?.otherUser?.name || c?.otherUser?.email || "Usuario"}
-                    lastMessage={c?.lastMessage?.text || "—"}
-                    time={
-                      c?.lastMessage?.createdAt
-                        ? new Date(c.lastMessage.createdAt).toLocaleString()
-                        : ""
-                    }
-                    peerId={c?.otherUser?._id}
-                  />
-                ))}
-              </div>
-
-              {chatPages > 1 && (
-                <div className="flex items-center justify-center gap-2">
-                  <button
-                    disabled={chatPage <= 1}
-                    onClick={() => goChatPage(chatPage - 1)}
-                    className={`px-3 py-1 rounded border cursor-pointer ${
-                      chatPage <= 1
-                        ? "opacity-40 cursor-not-allowed"
-                        : "bg-white hover:bg-gray-100"
-                    }`}
-                  >
-                    ←
-                  </button>
-                  <span className="text-sm text-gray-700">
-                    Página {chatPage} de {chatPages}
-                  </span>
-                  <button
-                    disabled={chatPage >= chatPages}
-                    onClick={() => goChatPage(chatPage + 1)}
-                    className={`px-3 py-1 rounded border cursor-pointer ${
-                      chatPage >= chatPages
-                        ? "opacity-40 cursor-not-allowed"
-                        : "bg-white hover:bg-gray-100"
-                    }`}
-                  >
-                    →
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div> */}
-
-        {/* Profesionales disponibles ahora */}
-        {/* <div className="text-left">
-          <div className="flex items-center gap-2 mb-4">
-            <h2 className="text-2xl font-bold">🟢 Profesionales disponibles ahora</h2>
-            <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
-              {onlinePros.length}
-            </span>
-          </div>
-          {loadingOnline ? (
-            <p className="text-gray-600">Cargando…</p>
-          ) : onlinePros.length === 0 ? (
-            <p className="text-gray-600">No hay profesionales en línea ahora.</p>
-          ) : (
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
-              {onlinePros.map((p) => (
-                <div key={p._id} className="border rounded-xl p-4 bg-white shadow-sm">
-                  <p className="font-semibold">{p?.user?.name || "Profesional"}</p>
-                  <p className="text-sm text-gray-600">{p?.user?.email}</p>
-                  <p className="text-sm text-emerald-600 mt-1">Disponible ahora</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div> */}
       </div>
 
       {/* Dock de chat IG/FB */}

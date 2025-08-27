@@ -30,11 +30,13 @@ export const resendVerification = async (email) => {
 
 export const getMyProfile = async () => {
   const { data } = await axiosUser.get(`${API}/users/me`);
-  return data;
+  return data; // suele ser { ...user } o { user: {...} } según tu BE
 };
 
+// 🔧 CAMBIO CLAVE: PUT -> PATCH
 export const updateMyProfile = async (payload) => {
-  const { data } = await axiosUser.put(`${API}/users/me`, payload);
+  const { data } = await axiosUser.patch(`${API}/users/me`, payload);
+  // devolvemos lo que venga: { user } o el user directo
   return data;
 };
 
@@ -64,8 +66,7 @@ export async function verifyEmailByToken(token) {
       method: "GET",
       cache: "no-store",
       signal: t.signal,
-      // 👇 Nada de Authorization ni cookies
-      headers: { "Accept": "application/json" },
+      headers: { Accept: "application/json" }, // sin Authorization
     });
 
     const isJson = (res.headers.get("content-type") || "").includes("application/json");

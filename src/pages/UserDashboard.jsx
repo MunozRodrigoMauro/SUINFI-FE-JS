@@ -1,3 +1,4 @@
+// src/pages/UserDashboard.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -13,6 +14,9 @@ import { haversineKm, fmtKm } from "../utils/geo";
 import MapCanvas from "../components/map/ProfessionalRequest/MapCanvas";
 import { getMyProfile } from "../api/userService";
 import ChatDock from "../components/chat/ChatDock";
+
+// ⬇️ nuevo hook
+import useLiveProLocations from "../hooks/useLiveProLocations";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const MAP_KEY = import.meta.env.VITE_MAP_API_KEY;
@@ -35,8 +39,7 @@ async function reverseGeocode(lat, lng) {
   const res = await fetch(url);
   const data = await res.json();
   const f = (data?.features || [])[0];
-  if (!f) return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  return f.place_name || f.text || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  return f ? f.place_name || f.text : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
 const LS_KEY = "suinfi:userdash:filters";
@@ -80,7 +83,8 @@ function UserDashboard() {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
 
-  const [liveLocs, setLiveLocs] = useState(new Map());
+  // ⬇️ posiciones live desde el hook (Map<userId, {lat,lng,atMs,isAvailableNow}>)
+  const livePositions = useLiveProLocations({ ttlMs: 120000 });
 
   const [recent, setRecent] = useState([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
@@ -263,33 +267,25 @@ function UserDashboard() {
     );
   };
 
-  // Socket: disponibilidad + ubicaciones
+  // Socket: refrescos por disponibilidad/presencia (el hook maneja las posiciones live)
   useEffect(() => {
     if (!socket) return;
     const refresh = () => { refetchCatalog(); refetchOnline(); };
     socket.on("availability:update", refresh);
     socket.on("availability:changed", refresh);
+    socket.on("presence:online", refresh);
+    socket.on("presence:offline", refresh);
     socket.on("connect", refresh);
-
-    const onProLoc = (payload) => {
-      if (!payload?.userId || payload.lat == null || payload.lng == null) return;
-      setLiveLocs((prev) => {
-        const next = new Map(prev);
-        next.set(payload.userId, { lat: payload.lat, lng: payload.lng, ts: Date.now() });
-        return next;
-      });
-    };
-    socket.on("pro:location:update", onProLoc);
-
     return () => {
       socket.off("availability:update", refresh);
       socket.off("availability:changed", refresh);
+      socket.off("presence:online", refresh);
+      socket.off("presence:offline", refresh);
       socket.off("connect", refresh);
-      socket.off("pro:location:update", onProLoc);
     };
   }, []);
 
-  // === Catálogo
+  // === Catálogo (fetch + anotación inicial)
   const refetchCatalog = async () => {
     setLoading(true);
     try {
@@ -311,21 +307,22 @@ function UserDashboard() {
         list = Array.isArray(data) ? data : data.items || [];
       }
 
+      // anotar con posiciones live (si existen) + distancia
       const annotated = (list || []).map((p) => {
         const fallback = normalizeProLoc(p);
         const userId = p?.user?._id;
-        const live = userId ? liveLocs.get(userId) : null;
-        const loc =
-          live && Date.now() - (live.ts || 0) < 120000
-            ? { lat: live.lat, lng: live.lng }
-            : fallback;
+        const live = userId ? livePositions.get(userId) : null;
+
+        const loc = live ? { lat: live.lat, lng: live.lng } : fallback;
 
         const d =
           origin?.lat != null && loc?.lat != null
             ? haversineKm(origin, { lat: loc.lat, lng: loc.lng })
             : null;
 
-        return { ...p, _distanceKm: d, _plotLoc: loc };
+        const isOn = typeof live?.isAvailableNow === "boolean" ? live.isAvailableNow : !!p.isAvailableNow;
+
+        return { ...p, _distanceKm: d, _plotLoc: loc, _isOn: isOn };
       });
 
       setAllResults(annotated);
@@ -342,6 +339,33 @@ function UserDashboard() {
     refetchCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [origin?.lat, origin?.lng, radiusKm, availableNow, categoryId, serviceId]);
+
+  // 🚀 Reanotar SOLO posiciones/distancias cuando cambia livePositions (sin refetch)
+  useEffect(() => {
+    if (!allResults.length) return;
+    const next = allResults.map((p) => {
+      const fallback = normalizeProLoc(p);
+      const userId = p?.user?._id;
+      const live = userId ? livePositions.get(userId) : null;
+
+      const loc = live ? { lat: live.lat, lng: live.lng } : fallback;
+
+      const d =
+        origin?.lat != null && loc?.lat != null
+          ? haversineKm(origin, { lat: loc.lat, lng: loc.lng })
+          : p._distanceKm ?? null;
+
+      const isOn = typeof live?.isAvailableNow === "boolean" ? live.isAvailableNow : !!p.isAvailableNow;
+
+      return { ...p, _plotLoc: loc, _distanceKm: d, _isOn: isOn };
+    });
+
+    setAllResults(next);
+    // mantener paginado actual
+    const start = (page - 1) * PAGE_SIZE;
+    setItems(next.slice(start, start + PAGE_SIZE));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [livePositions, origin?.lat, origin?.lng]);
 
   const goToPage = (n) => {
     const p = Math.min(Math.max(1, n), pages);
@@ -394,17 +418,38 @@ function UserDashboard() {
 
   const displayName = (u) => u?.name || u?.email?.split("@")[0] || "Usuario";
 
+  // Marcadores: color según _isOn live/BE
   const mapMarkers = useMemo(() => {
     return (allResults || [])
-      .map(p => p?._plotLoc)
-      .filter(loc => loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng))
-      .map((loc, i) => ({
-        lat: loc.lat,
-        lng: loc.lng,
-        color: "#10b981",
-        title: allResults[i]?.user?.name || "Profesional",
+      .map(p => ({
+        loc: p?._plotLoc,
+        name: p?.user?.name || "Profesional",
+        isOn: !!p?._isOn,
+      }))
+      .filter(x => x.loc && Number.isFinite(x.loc.lat) && Number.isFinite(x.loc.lng))
+      .map(x => ({
+        lat: x.loc.lat,
+        lng: x.loc.lng,
+        color: x.isOn ? "#10b981" : "#94a3b8",
+        title: x.name,
       }));
   }, [allResults]);
+
+  // Seguir ubicación del usuario (en vivo)
+  const [liveOrigin, setLiveOrigin] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("suinfi:liveOrigin") || "false"); } catch { return false; }
+  });
+  useEffect(() => { localStorage.setItem("suinfi:liveOrigin", JSON.stringify(liveOrigin)); }, [liveOrigin]);
+
+  useEffect(() => {
+    if (!liveOrigin || !navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(
+      (pos) => setOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 8000 }
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [liveOrigin]);
 
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] pt-24 pb-20 px-4">
@@ -445,13 +490,23 @@ function UserDashboard() {
               )}
             </div>
 
-            <div className="flex gap-2 mb-3">
-              <button onClick={useProfileAddress} className="px-3 py-2 rounded border bg-white hover:bg-gray-50">
-                Usar mi perfil
-              </button>
-              <button onClick={useGPS} className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black">
-                Usar GPS
-              </button>
+            <div className="flex flex-col gap-2 mb-3">
+              <div className="flex gap-2">
+                <button onClick={useProfileAddress} className="px-3 py-2 rounded border bg-white hover:bg-gray-50">
+                  Usar mi perfil
+                </button>
+                <button onClick={useGPS} className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black">
+                  Usar GPS
+                </button>
+              </div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={liveOrigin}
+                  onChange={(e) => setLiveOrigin(e.target.checked)}
+                />
+                <span className="text-sm">Seguir mi ubicación (en vivo)</span>
+              </label>
             </div>
 
             <div className="flex items-center gap-3 mb-3">
@@ -566,8 +621,8 @@ function UserDashboard() {
               return (
                 <div key={p._id} className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
                   <div className="relative h-28 bg-gradient-to-r from-slate-800 to-slate-700">
-                    <span className={`absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border ${p.isAvailableNow ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-600 border-gray-200"}`}>
-                      {p.isAvailableNow ? "Disponible ahora" : "Offline"}
+                    <span className={`absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border ${p._isOn ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                      {p._isOn ? "Disponible ahora" : "Offline"}
                     </span>
                     <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white grid place-items-center text-slate-800 font-bold">
                       {(name[0] || "P").toUpperCase()}
