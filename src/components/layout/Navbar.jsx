@@ -1,4 +1,3 @@
-// src/components/Navbar.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
@@ -7,7 +6,7 @@ import { setAvailableNow, getAvailableNowProfessionals } from "../../api/profess
 import { socket } from "../../lib/socket";
 
 function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, avatarVersion } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -18,6 +17,10 @@ function Navbar() {
   const [isAvailableNow, setIsAvailableNow] = useState(false);
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [availMsg, setAvailMsg] = useState("");
+
+  console.log('NAV user completo:', user);
+  console.log('NAV avatarUrl:', user?.avatarUrl);
+  console.log('NAV updatedAt:', user?.updatedAt);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
@@ -33,6 +36,7 @@ function Navbar() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
+  // Estado inicial de "Disponible ahora"
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -49,6 +53,7 @@ function Navbar() {
     };
   }, [user?.role, user?.id, user?._id]);
 
+  // Sockets
   useEffect(() => {
     if (!socket || user?.role !== "professional") return;
     const myId = user?.id || user?._id;
@@ -56,7 +61,6 @@ function Navbar() {
     const onAvailability = ({ userId, isAvailableNow }) => {
       if (userId === myId) setIsAvailableNow(!!isAvailableNow);
     };
-
     socket.on("availability:update", onAvailability);
     socket.on("availability:changed", onAvailability);
 
@@ -76,6 +80,7 @@ function Navbar() {
     };
   }, [user?.role, user?.id, user?._id]);
 
+  // Sync entre tabs (availability)
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key !== "suinfi:availabilityNow") return;
@@ -103,8 +108,11 @@ function Navbar() {
   const broadcastAvailability = (next) => {
     const myId = user?.id || user?._id;
     if (!myId) return;
-    socket.emit("availability:changed", { userId: myId, isAvailableNow: next });
-    localStorage.setItem("suinfi:availabilityNow", JSON.stringify({ v: next, who: myId, at: Date.now() }));
+    socket?.emit?.("availability:changed", { userId: myId, isAvailableNow: next });
+    localStorage.setItem(
+      "suinfi:availabilityNow",
+      JSON.stringify({ v: next, who: myId, at: Date.now() })
+    );
   };
 
   const toggleAvailability = async () => {
@@ -127,6 +135,27 @@ function Navbar() {
   };
 
   const showHelpOnly = user?.role === "professional" && location.pathname === "/profile";
+
+  // Helper avatar
+  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+  const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
+  const absUrl = (u) =>
+    !u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`;
+
+  console.log("NAV avatar:", {
+    avatarUrlRaw: user?.avatarUrl,
+    avatarVersion,
+    role: user?.role,
+    path: location.pathname,
+  });
+  
+
+  // ⚡️ cache-busting estable por contexto (independiente del BE)
+  const cacheKey = avatarVersion || 0;
+  const avatarUrl = user?.avatarUrl
+    ? `${absUrl(user.avatarUrl)}${cacheKey ? `?v=${encodeURIComponent(String(cacheKey))}` : ""}`
+    : "";
+  const initial = (user?.name?.[0] || user?.email?.[0] || "U").toUpperCase();
 
   return (
     <nav
@@ -158,7 +187,9 @@ function Navbar() {
                 </summary>
                 <div className="absolute right-0 mt-2 w-72 bg-white text-black border rounded-xl shadow-xl overflow-hidden z-50">
                   <button
-                    onClick={() => {/* abrir chat de soporte */}}
+                    onClick={() => {
+                      /* abrir chat de soporte */
+                    }}
                     className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
                   >
                     Chat con soporte
@@ -170,7 +201,10 @@ function Navbar() {
                     Requisitos para socios de la app
                   </button>
                   <button
-                    onClick={() => { logout(); navigate("/login"); }}
+                    onClick={() => {
+                      logout();
+                      navigate("/login");
+                    }}
                     className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                   >
                     Cerrar sesión
@@ -186,8 +220,17 @@ function Navbar() {
                     onClick={() => setOpenMenu((o) => !o)}
                     className="flex items-center gap-2 bg-white text-black px-3 py-1.5 rounded-lg shadow hover:bg-gray-100 transition"
                   >
-                    <div className="relative h-7 w-7 flex items-center justify-center rounded-full bg-gray-200 text-xs font-bold">
-                      {(user?.name?.[0] || user?.email?.[0] || "U").toUpperCase()}
+                    <div className="relative h-7 w-7 flex items-center justify-center rounded-full bg-gray-200 text-xs font-bold overflow-hidden">
+                      {avatarUrl ? (
+                        <img
+                          key={avatarUrl}           // fuerza re-render al cambiar ?v=
+                          src={avatarUrl}
+                          alt="Avatar"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        initial
+                      )}
                       {user?.role === "professional" && (
                         <span
                           title={isAvailableNow ? "Estás disponible" : "No disponible"}
@@ -198,16 +241,9 @@ function Navbar() {
                       )}
                     </div>
                     <span className="max-w-[140px] md:max-w-[160px] truncate">
-                      {(user?.name?.trim() || user?.email || "")
-                        .replace(/\s+/g, " ")
-                        .split(" ")[0]
-                        .toUpperCase()}
+                      {(user?.name?.trim() || user?.email || "").replace(/\s+/g, " ").split(" ")[0].toUpperCase()}
                     </span>
-                    <svg
-                      className={`h-4 w-4 transition ${openMenu ? "rotate-180" : ""}`}
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
+                    <svg className={`h-4 w-4 transition ${openMenu ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
                       <path
                         fillRule="evenodd"
                         d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
@@ -229,7 +265,6 @@ function Navbar() {
                       >
                         Ir a mi panel
                       </button>
-
                       <Link
                         to="/profile"
                         onClick={() => setOpenMenu(false)}
@@ -237,7 +272,6 @@ function Navbar() {
                       >
                         Mi perfil
                       </Link>
-
                       <Link
                         to="/chats"
                         onClick={() => setOpenMenu(false)}
@@ -294,10 +328,7 @@ function Navbar() {
               ) : (
                 <>
                   {location.pathname !== "/login" && (
-                    <Link
-                      to="/login"
-                      className="text-white hover:text-amber-400 transition-colors"
-                    >
+                    <Link to="/login" className="text-white hover:text-amber-400 transition-colors">
                       Iniciar sesión
                     </Link>
                   )}
@@ -318,5 +349,4 @@ function Navbar() {
     </nav>
   );
 }
-
 export default Navbar;

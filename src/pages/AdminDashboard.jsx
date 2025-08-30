@@ -439,12 +439,12 @@ export default function AdminDashboard() {
               label: "Acciones",
               render: (p) => (
                 <div className="flex gap-2">
-                  <button
+                  {/* <button
                     onClick={() => navigate(`/professional/${p?._id || p?.user?._id}`)}
                     className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50"
                   >
                     Ver perfil
-                  </button>
+                  </button> */}
                 </div>
               ),
             },

@@ -18,7 +18,8 @@ import ProfessionalServicesPage from "../pages/ProfessionalServicesPage";
 import ChatsPage from "../pages/ChatsPage";
 import VerifyEmailPage from "../pages/VerifyEmailPage";
 import VerifyEmailSent from "../pages/VerifyEmailSent";
-
+import ForgotPasswordPage from "../pages/ForgotPasswordPage";
+import ResetPasswordPage from "../pages/ResetPasswordPage";
  
 function AppRoutes() {
   const { loading } = useAuth();
@@ -150,6 +151,9 @@ function AppRoutes() {
         {/* Verificación de correo */}
         <Route path="/verify-email-sent" element={<VerifyEmailSent />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} /> {/* token por query ?token= */}
 
     </Routes>
 

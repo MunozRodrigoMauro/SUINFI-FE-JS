@@ -1,14 +1,35 @@
 // src/pages/ChatsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams, useLocation, useNavigate, Link } from "react-router-dom";
+import {
+  useParams,
+  useSearchParams,
+  useLocation,
+  useNavigate,
+  Link,
+} from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import axiosUser from "../api/axiosUser";
 import { socket } from "../lib/socket";
-import { LuSearch, LuSend, LuChevronLeft, LuLoaderCircle } from "react-icons/lu";
+import {
+  LuSearch,
+  LuSend,
+  LuChevronLeft,
+  LuLoaderCircle,
+} from "react-icons/lu";
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
+import { getAvailableNowProfessionals } from "../api/professionalService"; // ⬅️ NUEVO
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const ASSET_BASE = API.replace(/\/api\/?$/, "");
+const absUrl = (u) =>
+  !u
+    ? ""
+    : /^https?:\/\//i.test(u)
+    ? u
+    : u.startsWith("/")
+    ? `${ASSET_BASE}${u}`
+    : `${ASSET_BASE}/${u}`;
 
 export default function ChatsPage() {
   const { user } = useAuth();
@@ -27,23 +48,72 @@ export default function ChatsPage() {
   const [loadingList, setLoadingList] = useState(true);
   const [q, setQ] = useState("");
 
+  // 🟢 Set con los profesionales disponibles (para dots)
+  const [availableSet, setAvailableSet] = useState(() => new Set()); // ⬅️ NUEVO
+
+  const seedAvailability = async () => { // ⬅️ NUEVO
+    try {
+      const list = await getAvailableNowProfessionals();
+      const ids = new Set((list || []).map((p) => String(p?.user?._id || p?.user)));
+      setAvailableSet(ids);
+    } catch {}
+  };
+
+  // Inicial + sockets para disponibilidad (igual que en Navbar) ⬅️ NUEVO
+  useEffect(() => {
+    let mounted = true;
+
+    const init = async () => {
+      await seedAvailability();
+    };
+    init();
+
+    const onAvailability = ({ userId, isAvailableNow }) => {
+      if (!userId) return;
+      setAvailableSet((prev) => {
+        const next = new Set(prev);
+        if (isAvailableNow) next.add(String(userId));
+        else next.delete(String(userId));
+        return next;
+      });
+    };
+    const onConnect = () => seedAvailability();
+
+    socket?.on?.("availability:update", onAvailability);
+    socket?.on?.("availability:changed", onAvailability);
+    socket?.on?.("connect", onConnect);
+
+    return () => {
+      mounted = false;
+      socket?.off?.("availability:update", onAvailability);
+      socket?.off?.("availability:changed", onAvailability);
+      socket?.off?.("connect", onConnect);
+    };
+  }, []);
+
   const fetchChats = async () => {
     setLoadingList(true);
     try {
       const { data } = await axiosUser.get(`${API}/chats`);
       const arr = Array.isArray(data) ? data : [];
-      arr.sort((a, b) => new Date(b?.lastMessage?.createdAt || 0) - new Date(a?.lastMessage?.createdAt || 0));
+      arr.sort(
+        (a, b) =>
+          new Date(b?.lastMessage?.createdAt || 0) -
+          new Date(a?.lastMessage?.createdAt || 0)
+      );
       setChats(arr);
     } finally {
       setLoadingList(false);
     }
   };
-  useEffect(() => { fetchChats(); }, []);
+  useEffect(() => {
+    fetchChats();
+  }, []);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return chats;
     const term = q.toLowerCase();
-    return chats.filter(c => {
+    return chats.filter((c) => {
       const u = c?.otherUser || {};
       const name = (u.name || u.email || "").toLowerCase();
       const last = (c?.lastMessage?.text || "").toLowerCase();
@@ -62,6 +132,7 @@ export default function ChatsPage() {
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
 
+  // Autoredirige al primer chat si no hay :id en la URL
   useEffect(() => {
     if (otherUserId) return;
     if (loadingList) return;
@@ -70,6 +141,7 @@ export default function ChatsPage() {
     }
   }, [otherUserId, chats, loadingList, navigate]);
 
+  // Cargar conversación
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -77,7 +149,9 @@ export default function ChatsPage() {
       setLoadingChat(true);
       setError("");
       try {
-        const { data } = await axiosUser.get(`${API}/chats/with/${otherUserId}`);
+        const { data } = await axiosUser.get(
+          `${API}/chats/with/${otherUserId}`
+        );
         if (!mounted) return;
         setCounterpart(data?.otherUser || null);
         setChat(data?.chat || null);
@@ -88,19 +162,25 @@ export default function ChatsPage() {
         if (mounted) setLoadingChat(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [otherUserId]);
 
+  // Scroll al final
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages.length, loadingChat]);
 
+  // Join de usuario a su room personal
   useEffect(() => {
     if (!socket) return;
     const myId = user?.id || user?._id;
     if (myId) socket.emit("joinUser", String(myId));
   }, [user?.id, user?._id]);
 
+  // Join/leave de room del chat actual + recibir mensajes
   useEffect(() => {
     if (!socket || !chat?._id) return;
     const room = `chat:${chat._id}`;
@@ -109,7 +189,9 @@ export default function ChatsPage() {
     const onNewMsg = (payload) => {
       if (payload?.chatId !== String(chat._id)) return;
       setMessages((prev) => {
-        const already = prev.some((m) => String(m._id) === String(payload.message?._id));
+        const already = prev.some(
+          (m) => String(m._id) === String(payload.message?._id)
+        );
         return already ? prev : [...prev, payload.message];
       });
       fetchChats();
@@ -120,6 +202,7 @@ export default function ChatsPage() {
       socket.emit("leaveRoom", room);
       socket.off("chat:message", onNewMsg);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?._id]);
 
   const sendMessage = async (e) => {
@@ -143,21 +226,24 @@ export default function ChatsPage() {
     setSending(true);
 
     try {
-      const { data } = await axiosUser.post(`${API}/chats/${chat._id}/messages`, { text });
+      const { data } = await axiosUser.post(
+        `${API}/chats/${chat._id}/messages`,
+        { text }
+      );
       const real = data?.message;
 
-      setMessages(prev => {
-    // 1) sacamos el temporal
-    const noTemp = prev.filter(m => m._id !== tempId);
-    if (!real) return noTemp;
-    // 2) si ya lo agregó el socket, no lo dupliques
-    const exists = noTemp.some(m => String(m._id) === String(real._id));
-    return exists ? noTemp : [...noTemp, real];
+      setMessages((prev) => {
+        const noTemp = prev.filter((m) => m._id !== tempId);
+        if (!real) return noTemp;
+        const exists = noTemp.some((m) => String(m._id) === String(real._id));
+        return exists ? noTemp : [...noTemp, real];
       });
 
       fetchChats();
     } catch {
-      setMessages(prev => prev.map(m => (m._id === tempId ? { ...m, error: true } : m)));
+      setMessages((prev) =>
+        prev.map((m) => (m._id === tempId ? { ...m, error: true } : m))
+      );
     } finally {
       setSending(false);
     }
@@ -165,11 +251,28 @@ export default function ChatsPage() {
 
   const you = user?.id || user?._id;
 
+  // ===== FIX: nombre + avatar del header con fallback a la lista =====
+  const counterpartName =
+    counterpart?.name || counterpart?.email || "Chat";
+
+  const counterpartAvatar = useMemo(() => {
+    if (counterpart?.avatarUrl) return absUrl(counterpart.avatarUrl);
+    const fromList = chats.find(
+      (c) => String(c?.otherUser?._id) === String(otherUserId)
+    )?.otherUser?.avatarUrl;
+    return fromList ? absUrl(fromList) : "";
+  }, [counterpart?.avatarUrl, chats, otherUserId]);
+
+  // 🟢 Estado de disponibilidad del counterpart (header) ⬅️ NUEVO
+  const counterpartAvailable = useMemo(
+    () => availableSet.has(String(otherUserId || counterpart?._id || "")),
+    [availableSet, otherUserId, counterpart?._id]
+  );
+
   return (
     <>
       <Navbar />
 
-      {/* BackBar encima del contenido */}
       <BackBar
         title="💬 Mensajes"
         subtitle="Conversá con tus contactos en tiempo real."
@@ -177,7 +280,7 @@ export default function ChatsPage() {
 
       <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-6">
         <div className="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)] gap-4 px-4">
-          {/* Sidebar estilo IG */}
+          {/* Sidebar */}
           <aside className="rounded-2xl border bg-white shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b font-semibold">Chats</div>
             <div className="px-3 py-2 border-b">
@@ -201,6 +304,8 @@ export default function ChatsPage() {
                   const u = c?.otherUser || {};
                   const name = u.name || u.email || "Usuario";
                   const isActive = String(u._id) === String(otherUserId);
+                  const avatar = u.avatarUrl ? absUrl(u.avatarUrl) : "";
+                  const isAvail = availableSet.has(String(u._id || "")); // ⬅️ NUEVO
                   return (
                     <button
                       key={c._id}
@@ -209,17 +314,30 @@ export default function ChatsPage() {
                         isActive ? "bg-gray-50" : ""
                       }`}
                     >
-                      <div className="h-10 w-10 rounded-full bg-slate-200 grid place-items-center overflow-hidden">
-                        {u.avatarUrl ? (
-                          <img src={u.avatarUrl} alt={name} className="h-full w-full object-cover" />
+                      <div className="relative h-10 w-10 rounded-full bg-slate-200 grid place-items-center overflow-hidden">
+                        {avatar ? (
+                          <img
+                            src={avatar}
+                            alt={name}
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
                           <span className="text-sm font-semibold text-slate-700">
                             {(name[0] || "U").toUpperCase()}
                           </span>
                         )}
+                        {/* Dot de disponibilidad (igual Navbar) */}
+                        <span
+                          className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
+                            isAvail ? "bg-emerald-500" : "bg-gray-400"
+                          }`}
+                          title={isAvail ? "Disponible" : "No disponible"}
+                        />
                       </div>
                       <div className="min-w-0">
-                        <div className="font-medium leading-5 truncate">{name}</div>
+                        <div className="font-medium leading-5 truncate">
+                          {name}
+                        </div>
                         <div className="text-xs text-gray-500 truncate">
                           {c?.lastMessage?.text || "—"}
                         </div>
@@ -235,39 +353,64 @@ export default function ChatsPage() {
           <main className="rounded-2xl border bg-white shadow-sm overflow-hidden min-h-[70vh]">
             <div className="flex items-center justify-between px-4 py-3 bg-[#111827] text-white">
               <div className="flex items-center gap-3 min-w-0">
-                <button onClick={() => navigate(-1)} className="md:hidden rounded bg-white/10 p-1">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="md:hidden rounded bg-white/10 p-1"
+                >
                   <LuChevronLeft className="h-5 w-5" />
                 </button>
-                <div className="h-9 w-9 rounded-full bg-white/20 grid place-items-center overflow-hidden">
-                  <span className="text-sm font-semibold">
-                    {(counterpart?.name?.[0] || counterpart?.email?.[0] || "U").toUpperCase()}
-                  </span>
+                <div className="relative h-9 w-9 rounded-full bg-white/20 grid place-items-center overflow-hidden">
+                  {counterpartAvatar ? (
+                    <img
+                      src={counterpartAvatar}
+                      alt={counterpartName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-semibold">
+                      {(counterpartName?.[0] || "U").toUpperCase()}
+                    </span>
+                  )}
+                  {/* Dot de disponibilidad del counterpart (igual Navbar) */}
+                  <span
+                    className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
+                      counterpartAvailable ? "bg-emerald-500" : "bg-gray-400"
+                    }`}
+                    title={counterpartAvailable ? "Disponible" : "No disponible"}
+                  />
                 </div>
                 <div className="truncate font-semibold">
-                  {counterpart?.name || counterpart?.email || "Chat"}
+                  {counterpartName}
                 </div>
               </div>
-              <Link
+              {/* <Link
                 to={`/profile/${counterpart?._id || ""}`}
                 className="hidden md:inline-block text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20"
               >
                 Ver perfil
-              </Link>
+              </Link> */}
             </div>
 
-            <div ref={scrollRef} className="h-[60vh] md:h-[70vh] overflow-y-auto p-4 bg-gray-50">
+            <div
+              ref={scrollRef}
+              className="h-[60vh] md:h-[70vh] overflow-y-auto p-4 bg-gray-50"
+            >
               {loadingChat ? (
                 <div className="flex items-center justify-center h-full text-gray-600 gap-2">
-                  <LuLoaderCircle className="h-4 w-4 animate-spin" /> Cargando chat…
+                  <LuLoaderCircle className="h-4 w-4 animate-spin" /> Cargando
+                  chat…
                 </div>
               ) : error ? (
                 <div className="text-center text-rose-600">{error}</div>
               ) : messages.length === 0 ? (
-                <div className="text-center text-gray-500">No hay mensajes todavía.</div>
+                <div className="text-center text-gray-500">
+                  No hay mensajes todavía.
+                </div>
               ) : (
                 <div className="space-y-2">
                   {messages.map((m, i) => {
-                    const mine = String(m.from?._id || m.from) === String(you);
+                    const mine =
+                      String(m.from?._id || m.from) === String(you);
                     const key = String(m._id || `temp-${m.createdAt}-${i}`);
                     return (
                       <div
@@ -281,10 +424,14 @@ export default function ChatsPage() {
                       >
                         {m.text}
                         {m.pending && (
-                          <div className="text-[10px] opacity-75 mt-1">Enviando…</div>
+                          <div className="text-[10px] opacity-75 mt-1">
+                            Enviando…
+                          </div>
                         )}
                         {m.error && (
-                          <div className="text-[10px] text-rose-500 mt-1">Error al enviar</div>
+                          <div className="text-[10px] text-rose-500 mt-1">
+                            Error al enviar
+                          </div>
                         )}
                       </div>
                     );
@@ -293,7 +440,10 @@ export default function ChatsPage() {
               )}
             </div>
 
-            <form onSubmit={sendMessage} className="flex items-center gap-2 p-3 border-t bg-white">
+            <form
+              onSubmit={sendMessage}
+              className="flex items-center gap-2 p-3 border-t bg-white"
+            >
               <input
                 ref={inputRef}
                 className="flex-1 border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"

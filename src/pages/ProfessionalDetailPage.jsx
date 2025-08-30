@@ -1,6 +1,7 @@
+// src/pages/ProfessionalDetailPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { getProfessionalById } from "../api/professionalService";
+import { getProfessionalById, getProfessionalDocsMeta } from "../api/professionalService";
 import { createBooking } from "../api/bookingService";
 import axiosUser from "../api/axiosUser";
 
@@ -9,6 +10,10 @@ import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const ASSET_BASE = API.replace(/\/api\/?$/, "");
+
+const absUrl = (u) => (!u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`);
+
 const fetchAllServices = async () => {
   const { data } = await axiosUser.get(`${API}/services`);
   return Array.isArray(data) ? data : [];
@@ -115,7 +120,9 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
         <div className="px-5 py-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Reservar</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-black">✕</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-black">
+            ✕
+          </button>
         </div>
 
         <form onSubmit={submit} className="p-5 space-y-4">
@@ -128,16 +135,12 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
           {/* Servicio */}
           <div>
             <label className="block text-sm font-medium mb-1">Servicio</label>
-
             {hasServices ? (
-              <select
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2"
-              >
+              <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} className="w-full border rounded-lg px-3 py-2">
                 {(services || []).map((s) => (
                   <option key={s._id} value={s._id}>
-                    {s.name}{s.price ? ` — $${s.price}` : ""}
+                    {s.name}
+                    {s.price ? ` — $${s.price}` : ""}
                   </option>
                 ))}
               </select>
@@ -156,20 +159,26 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
                 <button
                   type="button"
                   key={d.value}
-                  onClick={() => { setDate(d.value); setTime(""); }}
-                  className={`shrink-0 px-3 py-1.5 rounded-full border text-sm
-                    ${date === d.value ? "bg-[#0a0e17] text-white border-[#0a0e17]" : "bg-white hover:bg-gray-50"}`}
+                  onClick={() => {
+                    setDate(d.value);
+                    setTime("");
+                  }}
+                  className={`shrink-0 px-3 py-1.5 rounded-full border text-sm ${
+                    date === d.value ? "bg-[#0a0e17] text-white border-[#0a0e17]" : "bg-white hover:bg-gray-50"
+                  }`}
                   title={new Date(d.value).toLocaleDateString()}
                 >
                   {d.label}
                 </button>
               ))}
             </div>
-            {/* Accesibilidad: input nativo oculto visualmente (opcional) */}
             <input
               type="date"
               value={date}
-              onChange={(e) => { setDate(e.target.value); setTime(""); }}
+              onChange={(e) => {
+                setDate(e.target.value);
+                setTime("");
+              }}
               className="sr-only"
               aria-hidden
               tabIndex={-1}
@@ -194,8 +203,9 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
                       type="button"
                       key={t}
                       onClick={() => setTime(t)}
-                      className={`px-2.5 py-1.5 rounded-md text-sm border
-                        ${time === t ? "bg-[#0a0e17] text-white border-[#0a0e17]" : "bg-white hover:bg-gray-50"}`}
+                      className={`px-2.5 py-1.5 rounded-md text-sm border ${
+                        time === t ? "bg-[#0a0e17] text-white border-[#0a0e17]" : "bg-white hover:bg-gray-50"
+                      }`}
                     >
                       {t}
                     </button>
@@ -203,14 +213,7 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
                 </div>
               </>
             )}
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="sr-only"
-              aria-hidden
-              tabIndex={-1}
-            />
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="sr-only" aria-hidden tabIndex={-1} />
           </div>
 
           {/* Nota */}
@@ -232,10 +235,9 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [] })
             <button
               type="submit"
               disabled={saving || !hasServices || !serviceId || !date || !time}
-              className={`px-4 py-2 rounded-lg text-white
-                ${saving || !hasServices || !serviceId || !date || !time
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-[#0a0e17] hover:bg-black/80"}`}
+              className={`px-4 py-2 rounded-lg text-white ${
+                saving || !hasServices || !serviceId || !date || !time ? "bg-gray-400 cursor-not-allowed" : "bg-[#0a0e17] hover:bg-black/80"
+              }`}
             >
               {saving ? "Creando…" : "Confirmar reserva"}
             </button>
@@ -253,10 +255,15 @@ export default function ProfessionalDetailPage() {
 
   const [pro, setPro] = useState(null);
   const [loading, setLoading] = useState(true);
+
   const [openModal, setOpenModal] = useState(false);
 
   const [servicesResolved, setServicesResolved] = useState([]);
   const [loadingServices, setLoadingServices] = useState(true);
+
+  // Documentos
+  const [docsMeta, setDocsMeta] = useState(null);
+  const [pdfOpen, setPdfOpen] = useState({ url: "", open: false });
 
   useEffect(() => {
     let mounted = true;
@@ -266,9 +273,9 @@ export default function ProfessionalDetailPage() {
         if (!mounted) return;
         setPro(data);
 
+        // Services (resolución si viene por ids)
         const raw = data?.services || [];
         const isPopulated = raw.some((s) => s && typeof s === "object" && s.name);
-
         if (isPopulated) {
           setServicesResolved(raw);
         } else if (raw.length) {
@@ -278,28 +285,62 @@ export default function ProfessionalDetailPage() {
         } else {
           setServicesResolved([]);
         }
+
+        // Cargar meta de documentos (absolutizar URLs)
+        try {
+          const meta = await getProfessionalDocsMeta(id);
+          const cr = meta?.criminalRecord || null;
+          const lic = meta?.license || null;
+          const now = Date.now();
+          setDocsMeta({
+            criminalRecord: cr
+              ? {
+                  ...cr,
+                  url: absUrl(cr.url),
+                  expired: typeof cr.expired === "boolean" ? cr.expired : cr.expiresAt ? new Date(cr.expiresAt).getTime() < now : false,
+                }
+              : null,
+            license: lic ? { ...lic, url: absUrl(lic.url) } : null,
+          });
+        } catch {
+          // Fallback desde data.documents
+          const d = data?.documents || {};
+          const now = Date.now();
+          const cr = d?.criminalRecord || null;
+          const lic = d?.license || null;
+          if (cr || lic) {
+            setDocsMeta({
+              criminalRecord: cr
+                ? { ...cr, url: absUrl(cr.url), expired: cr.expiresAt ? new Date(cr.expiresAt).getTime() < now : false }
+                : null,
+              license: lic ? { ...lic, url: absUrl(lic.url) } : null,
+            });
+          }
+        }
+
         setLoadingServices(false);
       } finally {
         setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [id]);
 
   useEffect(() => {
     if (search.get("reserve") === "1") setOpenModal(true);
   }, [search]);
 
-  const servicesNames = useMemo(
-    () => (servicesResolved || []).map((s) => s?.name).filter(Boolean),
-    [servicesResolved]
-  );
+  const servicesNames = useMemo(() => (servicesResolved || []).map((s) => s?.name).filter(Boolean), [servicesResolved]);
 
   if (loading) return <div className="pt-28 text-center">Cargando…</div>;
   if (!pro) return <div className="pt-28 text-center text-gray-600">Profesional no encontrado.</div>;
 
   const name = pro?.user?.name || "Profesional";
   const email = pro?.user?.email || "";
+  const avatar = pro?.user?.avatarUrl ? absUrl(pro.user.avatarUrl) : "";
+  const initial = (name?.[0] || "P").toUpperCase();
 
   return (
     <>
@@ -311,8 +352,8 @@ export default function ProfessionalDetailPage() {
         <div className="max-w-4xl mx-auto px-4">
           {/* Header */}
           <div className="relative h-40 rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 mt-6">
-            <div className="absolute -bottom-8 left-6 h-16 w-16 rounded-full ring-4 ring-white bg-white grid place-items-center text-slate-800 font-bold">
-              {(name[0] || "P").toUpperCase()}
+            <div className="absolute -bottom-8 left-6 h-16 w-16 rounded-full ring-4 ring-white bg-white overflow-hidden grid place-items-center text-slate-800 font-bold">
+              {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : initial}
             </div>
           </div>
 
@@ -349,7 +390,7 @@ export default function ProfessionalDetailPage() {
 
               <div className="flex items-center gap-2">
                 {pro.isAvailableNow ? (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200 border">
                     Disponible ahora
                   </span>
                 ) : (
@@ -362,13 +403,69 @@ export default function ProfessionalDetailPage() {
                   disabled={servicesResolved.length === 0}
                   title={servicesResolved.length === 0 ? "Este profesional no cargó servicios" : "Reservar"}
                   className={`ml-2 px-4 py-2 rounded-lg text-white ${
-                    servicesResolved.length === 0
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-[#0a0e17] hover:bg-black"
+                    servicesResolved.length === 0 ? "bg-gray-400 cursor-not-allowed" : "bg-[#0a0e17] hover:bg-black"
                   }`}
                 >
                   Reservar
                 </button>
+              </div>
+            </div>
+
+            {/* Documentos */}
+            <div className="mt-6">
+              <h2 className="font-semibold mb-2">Documentos</h2>
+
+              {/* Certificado de antecedentes */}
+              <div className="flex items-center justify-between p-3 border rounded-xl mb-3">
+                <div>
+                  <div className="font-medium">Certificado de antecedentes</div>
+                  <div className="text-sm text-gray-600">
+                    {docsMeta?.criminalRecord?.url ? (
+                      docsMeta.criminalRecord.expired ? (
+                        <span className="text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded text-xs">Vencido</span>
+                      ) : (
+                        <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-xs">Vigente</span>
+                      )
+                    ) : (
+                      <span className="text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-xs">No cargado</span>
+                    )}
+                    {docsMeta?.criminalRecord?.expiresAt && (
+                      <span className="ml-2 text-xs text-gray-500">
+                        Vence: {new Date(docsMeta.criminalRecord.expiresAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {docsMeta?.criminalRecord?.url && (
+                  <button
+                    className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50"
+                    onClick={() => setPdfOpen({ url: docsMeta.criminalRecord.url, open: true })}
+                  >
+                    Ver documento
+                  </button>
+                )}
+              </div>
+
+              {/* Matrícula */}
+              <div className="flex items-center justify-between p-3 border rounded-xl">
+                <div>
+                  <div className="font-medium">Matrícula / Credencial</div>
+                  <div className="text-sm text-gray-600">
+                    {docsMeta?.license?.url ? (
+                      <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-xs">Cargada</span>
+                    ) : (
+                      <span className="text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-xs">No cargada</span>
+                    )}
+                  </div>
+                </div>
+                {docsMeta?.license?.url && (
+                  <button
+                    className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50"
+                    onClick={() => setPdfOpen({ url: docsMeta.license.url, open: true })}
+                  >
+                    Ver documento
+                  </button>
+                )}
               </div>
             </div>
 
@@ -388,6 +485,30 @@ export default function ProfessionalDetailPage() {
           onCreated={() => navigate("/bookings")}
         />
       </section>
+
+      {/* Modal PDF */}
+      {pdfOpen.open && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl bg-white rounded-2xl overflow-hidden shadow-xl">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-semibold">Documento</div>
+              <button onClick={() => setPdfOpen({ url: "", open: false })} className="text-gray-600 hover:text-black">
+                ✕
+              </button>
+            </div>
+            <div className="h-[70vh]">
+              <object data={pdfOpen.url} type="application/pdf" className="w-full h-full">
+                <p className="p-4 text-sm">
+                  No se pudo mostrar el PDF.{" "}
+                  <a href={pdfOpen.url} className="text-blue-600 underline" target="_blank" rel="noreferrer">
+                    Abrir en nueva pestaña
+                  </a>
+                </p>
+              </object>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

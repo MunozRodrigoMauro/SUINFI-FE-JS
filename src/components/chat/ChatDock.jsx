@@ -1,4 +1,3 @@
-// src/components/chat/ChatDock.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   LuX,
@@ -10,20 +9,67 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { socket } from "../../lib/socket";
 import { getOrCreateWith, sendText } from "../../api/chatService";
+import { getAvailableNowProfessionals } from "../../api/professionalService"; // ⬅️ NUEVO
 
 /**
  * props:
  * - chats: [{ _id, otherUser:{_id,name,email,avatarUrl}, lastMessage:{ text, createdAt, from?, readAt? } }]
  * - onOpenChat: (peerId) => void
  */
+
+// 🔗 Absolutizar rutas /uploads para que se vean las fotos
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
+const absUrl = (u) =>
+  !u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`;
+
 export default function ChatDock({ chats = [], onOpenChat }) {
   const { user } = useAuth();
   const me = user?.id || user?._id;
 
   const [openList, setOpenList] = useState(false);
-  const [windows, setWindows] = useState([]);            // [{peerId, name}]
+  const [windows, setWindows] = useState([]);            // [{peerId, name, avatar}]
   const [locallyRead, setLocallyRead] = useState(() => new Set()); // peerIds marcados como leídos al abrir
   const [overrides, setOverrides] = useState({});        // { [peerId]: { text, createdAt, from } }
+
+  // 🔴🟢 Disponibilidad de profesionales (Set de userIds)
+  const [availableSet, setAvailableSet] = useState(() => new Set());
+
+  // Estado inicial de disponibilidad + resync on connect
+  useEffect(() => {
+    let mounted = true;
+    const seed = async () => {
+      try {
+        const list = await getAvailableNowProfessionals();
+        if (!mounted) return;
+        const ids = new Set((list || []).map((p) => String(p?.user?._id || p?.user)));
+        setAvailableSet(ids);
+      } catch {}
+    };
+    seed();
+
+    const onAvailability = ({ userId, isAvailableNow }) => {
+      if (!userId) return;
+      setAvailableSet((prev) => {
+        const next = new Set(prev);
+        if (isAvailableNow) next.add(String(userId));
+        else next.delete(String(userId));
+        return next;
+      });
+    };
+    const onConnect = () => seed();
+
+    socket?.on?.("availability:update", onAvailability);
+    socket?.on?.("availability:changed", onAvailability);
+    socket?.on?.("connect", onConnect);
+
+    return () => {
+      mounted = false;
+      socket?.off?.("availability:update", onAvailability);
+      socket?.off?.("availability:changed", onAvailability);
+      socket?.off?.("connect", onConnect);
+    };
+  }, []);
 
   // fusiona chats + overrides de último mensaje y reordena por fecha
   const merged = useMemo(() => {
@@ -66,10 +112,10 @@ export default function ChatDock({ chats = [], onOpenChat }) {
     [merged, locallyRead, me]
   );
 
-  const openWindow = (peerId, name) => {
+  const openWindow = (peerId, name, avatar) => {
     setWindows((prev) => {
       const exists = prev.find((w) => w.peerId === peerId);
-      const next = exists ? prev : [...prev, { peerId, name }];
+      const next = exists ? prev : [...prev, { peerId, name, avatar }];
       return next.slice(-3);
     });
     // al abrir, lo marcamos como leído localmente (no afecta al backend)
@@ -130,16 +176,20 @@ export default function ChatDock({ chats = [], onOpenChat }) {
               {merged.map((c) => {
                 const name =
                   c?.otherUser?.name || c?.otherUser?.email || "Usuario";
-                const avatar = c?.otherUser?.avatarUrl || "";
+                const peerId = String(c?.otherUser?._id || "");
+                const isAvail = availableSet.has(peerId);
+                const avatar = c?.otherUser?.avatarUrl
+                  ? absUrl(c.otherUser.avatarUrl)
+                  : "";
                 const unread = isUnread(c);
 
                 return (
                   <button
                     key={c._id}
-                    onClick={() => openWindow(c?.otherUser?._id, name)}
+                    onClick={() => openWindow(c?.otherUser?._id, name, c?.otherUser?.avatarUrl || "")}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left"
                   >
-                    <div className="h-9 w-9 rounded-full bg-slate-200 overflow-hidden shrink-0 grid place-items-center">
+                    <div className="relative h-9 w-9 rounded-full bg-slate-200 overflow-hidden shrink-0 grid place-items-center">
                       {avatar ? (
                         <img
                           src={avatar}
@@ -151,6 +201,12 @@ export default function ChatDock({ chats = [], onOpenChat }) {
                           {name.charAt(0).toUpperCase()}
                         </span>
                       )}
+                      <span
+                        className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
+                          isAvail ? "bg-emerald-500" : "bg-gray-400"
+                        }`}
+                        title={isAvail ? "Disponible" : "No disponible"}
+                      />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -193,6 +249,8 @@ export default function ChatDock({ chats = [], onOpenChat }) {
             key={w.peerId}
             peerId={w.peerId}
             name={w.name}
+            avatarUrl={w.avatar}                          // ⬅️ NUEVO
+            isAvailable={availableSet.has(String(w.peerId))}
             onClose={() => closeWindow(w.peerId)}
             onOpen={() => onOpenChat?.(w.peerId)} // abre ChatsPage solo al presionar "Abrir"
             onLocalLastMessage={(payload) =>
@@ -212,6 +270,8 @@ export default function ChatDock({ chats = [], onOpenChat }) {
             <ChatWindow
               peerId={windows[0].peerId}
               name={windows[0].name}
+              avatarUrl={windows[0].avatar}              // ⬅️ NUEVO
+              isAvailable={availableSet.has(String(windows[0].peerId))}
               onClose={() => closeWindow(windows[0].peerId)}
               onOpen={() => onOpenChat?.(windows[0].peerId)}
               isMobile
@@ -229,7 +289,7 @@ export default function ChatDock({ chats = [], onOpenChat }) {
   );
 }
 
-function ChatWindow({ peerId, name, onClose, onOpen, isMobile = false, onLocalLastMessage }) {
+function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose, onOpen, isMobile = false, onLocalLastMessage }) {
   const { user } = useAuth();
   const me = user?.id || user?._id;
 
@@ -237,6 +297,7 @@ function ChatWindow({ peerId, name, onClose, onOpen, isMobile = false, onLocalLa
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(avatarProp || "");  // ⬅️ NUEVO
   const listRef = useRef(null);
 
   // Para evitar duplicados
@@ -251,6 +312,11 @@ function ChatWindow({ peerId, name, onClose, onOpen, isMobile = false, onLocalLa
         if (!mounted) return;
         const cid = data?.chat?._id || null;
         setChatId(cid);
+
+        // Si no recibimos avatar al abrir la ventana, lo tomamos del BE
+        if (!avatarProp && data?.otherUser?.avatarUrl) {
+          setAvatarUrl(data.otherUser.avatarUrl);
+        }
 
         const msgs = Array.isArray(data?.messages) ? data.messages : [];
         const dedup = [];
@@ -371,16 +437,31 @@ function ChatWindow({ peerId, name, onClose, onOpen, isMobile = false, onLocalLa
   };
 
   const isMine = (m) => String(m.from?._id || m.from) === String(me);
+  const photo = avatarUrl ? absUrl(avatarUrl) : "";
+  const initial = (name?.[0] || "U").toUpperCase();
 
   return (
     <div
-      className={`w-[320px] ${
-        isMobile ? "w-full h-[70vh]" : "h-96"
-      } rounded-2xl border bg-white shadow-xl overflow-hidden`}
+      className={`w-[320px] ${isMobile ? "w-full h-[70vh]" : "h-96"} rounded-2xl border bg-white shadow-xl overflow-hidden`}
     >
       {/* Topbar de ventanita */}
       <div className="px-3 py-2 bg-slate-800 text-white flex items-center justify-between">
-        <div className="font-medium truncate">{name}</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="relative h-7 w-7 rounded-full bg-white/20 grid place-items-center overflow-hidden">
+            {photo ? (
+              <img src={photo} alt={name} className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-xs font-semibold">{initial}</span>
+            )}
+            <span
+              className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
+                isAvailable ? "bg-emerald-500" : "bg-gray-400"
+              }`}
+              title={isAvailable ? "Disponible" : "No disponible"}
+            />
+          </div>
+          <div className="font-medium truncate">{name}</div>
+        </div>
         <div className="flex items-center gap-2">
           <button
             className="text-white/80 hover:text-white text-sm"
@@ -402,9 +483,7 @@ function ChatWindow({ peerId, name, onClose, onOpen, isMobile = false, onLocalLa
       {/* Timeline con separador cada 4 mensajes */}
       <div
         ref={listRef}
-        className={`px-3 ${
-          isMobile ? "h-[calc(70vh-110px)]" : "h-[calc(384px-110px)]"
-        } overflow-y-auto bg-gray-50`}
+        className={`px-3 ${isMobile ? "h-[calc(70vh-110px)]" : "h-[calc(384px-110px)]"} overflow-y-auto bg-gray-50`}
       >
         {messages.length === 0 ? (
           <div className="text-center text-xs text-gray-500 py-3">

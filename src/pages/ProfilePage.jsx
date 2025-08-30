@@ -1,8 +1,12 @@
-// src/pages/ProfilePage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
-import { getMyProfile, updateMyProfile } from "../api/userService";
+import {
+  getMyProfile,
+  updateMyProfile,
+  uploadMyAvatar,
+  deleteMyAvatar,
+} from "../api/userService";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import MapCanvas from "../components/map/ProfessionalRequest/MapCanvas";
@@ -12,8 +16,11 @@ import {
   updateMyProfessional,
   updateMyLocation,
   getMyProfessional,
+  uploadProfessionalDoc,
 } from "../api/professionalService";
 
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
 const MAP_KEY = import.meta.env.VITE_MAP_API_KEY;
 
 const DAYS = [
@@ -27,9 +34,14 @@ const DAYS = [
 ];
 
 const buildAddressLabel = (a) =>
-  [a.street && `${a.street} ${a.number}`, a.city, a.state, a.postalCode, a.country]
-    .filter(Boolean)
-    .join(", ");
+  [a.street && `${a.street} ${a.number}`, a.city, a.state, a.postalCode, a.country].filter(Boolean).join(", ");
+
+function absUrl(u) {
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith("/")) return `${ASSET_BASE}${u}`;
+  return `${ASSET_BASE}/${u}`;
+}
 
 function Chevron({ open }) {
   return (
@@ -65,25 +77,25 @@ async function reverseGeocode(lat, lng) {
 }
 
 export default function ProfilePage() {
-  const { user, setUser } = useAuth();
+  const { user, setUser, bumpAvatarVersion } = useAuth();
   const navigate = useNavigate();
 
-  // si existe Professional para este user
   const [hasProfessional, setHasProfessional] = useState(false);
 
-  // cuenta
-  const [form, setForm] = useState({ name: "", email: "", role: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", role: "", password: "", avatarUrl: "" });
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("success");
 
-  // dropdowns
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState("");
+
   const [openAccount, setOpenAccount] = useState(false);
   const [openAddress, setOpenAddress] = useState(false);
   const [openAvailability, setOpenAvailability] = useState(false);
+  const [openDocuments, setOpenDocuments] = useState(false);
 
-  // address “humano”
   const [addr, setAddr] = useState({
     country: "",
     state: "",
@@ -94,31 +106,42 @@ export default function ProfilePage() {
     postalCode: "",
   });
 
-  // buscador
   const [query, setQuery] = useState("");
   const [suggests, setSuggests] = useState([]);
   const [isFocused, setIsFocused] = useState(false);
   const [allowSuggests, setAllowSuggests] = useState(false);
   const debounceId = useRef(0);
 
-  // coords + etiqueta
   const [coords, setCoords] = useState(null);
   const [label, setLabel] = useState("");
 
-  // agenda
-  const [rows, setRows] = useState(() =>
-    DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" }))
-  );
+  const [rows, setRows] = useState(() => DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })));
   const [loadingAgenda, setLoadingAgenda] = useState(true);
   const [savingAgenda, setSavingAgenda] = useState(false);
   const [agendaMsg, setAgendaMsg] = useState("");
 
-  // cargar perfil + professional
+  const [docsMsg, setDocsMsg] = useState("");
+  const [savingDocs, setSavingDocs] = useState(false);
+  const [docCrFile, setDocCrFile] = useState(null);
+  const [docLicFile, setDocLicFile] = useState(null);
+  const [docCrExpiresAt, setDocCrExpiresAt] = useState("");
+  const [documents, setDocuments] = useState(() => ({
+    criminalRecord: null,
+    license: null,
+  }));
+
   useEffect(() => {
     (async () => {
       try {
         const me = await getMyProfile();
-        setForm({ name: me.name || "", email: me.email || "", role: me.role || "", password: "" });
+        setForm({
+          name: me.name || "",
+          email: me.email || "",
+          role: me.role || "",
+          password: "",
+          avatarUrl: me?.avatarUrl || "",
+        });
+        setAvatarPreview(absUrl(me?.avatarUrl || ""));
         setAddr((prev) => ({
           ...prev,
           country: me?.address?.country || "",
@@ -153,7 +176,6 @@ export default function ProfilePage() {
         const exists = !!mine?._id;
         setHasProfessional(exists);
 
-        // Prefill agenda si existe
         if (mine?.availabilitySchedule) {
           const map = mine.availabilitySchedule;
           setRows((prev) =>
@@ -163,6 +185,15 @@ export default function ProfilePage() {
               return { ...r, active: true, from: v.from || "09:00", to: v.to || "18:00" };
             })
           );
+        }
+
+        if (mine?.documents) {
+          const cr = mine.documents.criminalRecord || null;
+          const lic = mine.documents.license || null;
+          const crAbs = cr ? { ...cr, url: absUrl(cr.url) } : null;
+          const licAbs = lic ? { ...lic, url: absUrl(lic.url) } : null;
+          setDocuments({ criminalRecord: crAbs, license: licAbs });
+          setDocCrExpiresAt(cr?.expiresAt ? new Date(cr.expiresAt).toISOString().slice(0, 10) : "");
         }
       } catch {
         setHasProfessional(false);
@@ -184,12 +215,17 @@ export default function ProfilePage() {
     return () => clearTimeout(t);
   }, [agendaMsg]);
 
+  useEffect(() => {
+    if (!docsMsg) return;
+    const t = setTimeout(() => setDocsMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [docsMsg]);
+
   const onChangeQuery = (e) => {
     setAllowSuggests(true);
     setQuery(e.target.value);
   };
 
-  // autocomplete
   useEffect(() => {
     window.clearTimeout(debounceId.current);
     if (!isFocused || !allowSuggests || !query?.trim()) {
@@ -233,8 +269,35 @@ export default function ProfilePage() {
     );
   };
 
-  // Guardado + sync User + (si existe) Professional (address + GeoJSON)
+  // Guardado + sync User + (si existe) Professional
   const saveCommon = async () => {
+    let newAvatarUrl = form.avatarUrl || "";
+    let updatedAtFromUpload = null;
+
+    if (avatarFile) {
+      try {
+        const fd = new FormData();
+        fd.append("file", avatarFile);
+        const r = await uploadMyAvatar(fd); // { url, user }
+        const uploaded = r?.url || r?.user?.avatarUrl || "";
+        if (uploaded) {
+          newAvatarUrl = uploaded;
+          setAvatarPreview(absUrl(uploaded));
+
+          const nextUpdatedAt = r?.user?.updatedAt || new Date().toISOString();
+          updatedAtFromUpload = nextUpdatedAt;
+          setUser((prev) => ({ ...prev, avatarUrl: uploaded, updatedAt: nextUpdatedAt }));
+          // ⬅️ forzar recarga de avatar en Navbar (todas las vistas)
+          bumpAvatarVersion();
+        }
+      } catch (e) {
+        console.error("upload avatar error", e);
+        setMsgType("error");
+        setMsg("No se pudo subir la foto. Probá nuevamente.");
+        return;
+      }
+    }
+
     const clean = {
       country: addr.country.trim(),
       state: addr.state.trim(),
@@ -244,9 +307,11 @@ export default function ProfilePage() {
       unit: addr.unit.trim(),
       postalCode: addr.postalCode.trim(),
     };
+
     const payload = {
       name: form.name.trim() || undefined,
       password: form.password.trim() || undefined,
+      ...(newAvatarUrl ? { avatarUrl: newAvatarUrl } : {}),
       address: {
         ...clean,
         ...(coords
@@ -255,12 +320,14 @@ export default function ProfilePage() {
       },
     };
 
-    // 1) User
     const res = await updateMyProfile(payload);
-    const updated = res?.user || res; // soporta ambas formas de respuesta
-    setUser((p) => ({ ...p, ...updated }));
+    const updated = res?.user || res;
+    setUser((p) => ({
+      ...p,
+      ...updated,
+      ...(updatedAtFromUpload ? { updatedAt: updatedAtFromUpload } : {}),
+    }));
 
-    // 2) Professional (si existe)
     if (hasProfessional) {
       try {
         await updateMyProfessional({
@@ -271,7 +338,6 @@ export default function ProfilePage() {
           },
         });
         if (coords) {
-          // clave para /nearby (GeoJSON Point [lng, lat])
           await updateMyLocation(coords.lat, coords.lng);
         }
       } catch (e) {
@@ -279,14 +345,10 @@ export default function ProfilePage() {
       }
     }
 
+    setAvatarFile(null);
     setMsgType("success");
     setMsg("✅ Cambios guardados");
   };
-
-  // agenda helpers
-  const onToggle = (i, v) => setRows((a) => a.map((r, idx) => (idx === i ? { ...r, active: v } : r)));
-  const onChangeFrom = (i, v) => setRows((a) => a.map((r, idx) => (idx === i ? { ...r, from: v } : r)));
-  const onChangeTo = (i, v) => setRows((a) => a.map((r, idx) => (idx === i ? { ...r, to: v } : r)));
 
   const invalids = useMemo(() => {
     const bad = [];
@@ -321,22 +383,108 @@ export default function ProfilePage() {
 
   const essentialsOk = useMemo(() => {
     const nameOk = form.name.trim().length >= 2;
-    const addrOk = addr.country && addr.state && addr.city && addr.street && addr.number && addr.postalCode;
+    const addrOk =
+      addr.country && addr.state && addr.city && addr.street && addr.number && addr.postalCode;
     return Boolean(nameOk && addrOk);
   }, [form.name, addr]);
 
+  const crExpired = useMemo(() => {
+    const ex = documents?.criminalRecord?.expiresAt;
+    return ex ? new Date(ex).getTime() < Date.now() : false;
+  }, [documents?.criminalRecord?.expiresAt]);
+
+  const saveDocuments = async ({ which }) => {
+    if (!hasProfessional) return;
+    setSavingDocs(true);
+    setDocsMsg("");
+    try {
+      if (which === "cr") {
+        if (!docCrFile) {
+          setDocsMsg("Para actualizar el vencimiento, por ahora subí un PDF nuevo.");
+        } else {
+          const fd = new FormData();
+          fd.append("file", docCrFile);
+          if (docCrExpiresAt) fd.append("expiresAt", docCrExpiresAt);
+          const r = await uploadProfessionalDoc("criminal-record", fd);
+          const docs = r?.documents || {};
+          setDocuments({
+            criminalRecord: docs.criminalRecord ? { ...docs.criminalRecord, url: absUrl(docs.criminalRecord.url) } : null,
+            license: docs.license ? { ...docs.license, url: absUrl(docs.license.url) } : documents.license,
+          });
+          setDocCrFile(null);
+          setDocsMsg("✅ Antecedentes subidos.");
+        }
+      }
+      if (which === "lic") {
+        if (!docLicFile) {
+          setDocsMsg("Seleccioná un PDF para subir la matrícula.");
+        } else {
+          const fd = new FormData();
+          fd.append("file", docLicFile);
+          const r = await uploadProfessionalDoc("license", fd);
+          const docs = r?.documents || {};
+          setDocuments({
+            criminalRecord: docs.criminalRecord ? { ...docs.criminalRecord, url: absUrl(docs.criminalRecord.url) } : documents.criminalRecord,
+            license: docs.license ? { ...docs.license, url: absUrl(docs.license.url) } : null,
+          });
+          setDocLicFile(null);
+          setDocsMsg("✅ Matrícula subida.");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      setDocsMsg("No se pudieron actualizar los documentos.");
+    } finally {
+      setSavingDocs(false);
+    }
+  };
+
+  const removeDocument = async (_which) => {
+    setDocsMsg("Por ahora no es posible eliminar documentos desde la app.");
+  };
+
+  // ⬇️ borrar avatar en servidor + bust inmediato
+  const handleDeleteAvatar = async () => {
+    try {
+      const { user: updated } = await deleteMyAvatar();
+      setAvatarPreview("");
+      setAvatarFile(null);
+      setForm((f) => ({ ...f, avatarUrl: "" }));
+      setUser((prev) => ({ ...prev, ...updated, updatedAt: updated?.updatedAt || new Date().toISOString() }));
+      bumpAvatarVersion(); // ⬅️ fuerza recarga en Navbar
+      setMsgType("success");
+      setMsg("✅ Foto eliminada");
+    } catch {
+      setMsgType("error");
+      setMsg("No se pudo eliminar la foto.");
+    }
+  };
+
   if (loadingProfile) return <p className="text-center mt-28">Cargando tu perfil...</p>;
+
+  const headerInitial = (form.name?.[0] || "U").toUpperCase();
 
   return (
     <>
       <Navbar />
       <BackBar
         title="Mi perfil"
-        subtitle={hasProfessional ? "Editá tu cuenta, ubicación y disponibilidad" : "Editá tu cuenta y ubicación"}
+        subtitle={hasProfessional ? "Editá tu cuenta, foto, ubicación, documentos y disponibilidad" : "Editá tu cuenta, foto y ubicación"}
       />
+
       <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-24 px-4">
         <div className="max-w-3xl mx-auto">
-          <h1 className="text-3xl font-bold mb-2">👤 Mi perfil</h1>
+          {/* Encabezado con AVATAR */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-12 w-12 rounded-full overflow-hidden bg-gray-200 grid place-items-center text-gray-700 font-bold ring-2 ring-white shadow">
+              {avatarPreview ? (
+                <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
+              ) : (
+                headerInitial
+              )}
+            </div>
+            <h1 className="text-3xl font-bold">Mi perfil</h1>
+          </div>
 
           {msg && (
             <div
@@ -352,16 +500,68 @@ export default function ProfilePage() {
 
           {/* CUENTA */}
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-            <button onClick={() => setOpenAccount((o) => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50">
+            <button
+              onClick={() => setOpenAccount((o) => !o)}
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+            >
               <div>
                 <h2 className="text-lg font-semibold">Cuenta</h2>
-                <p className="text-sm text-gray-500">Nombre, email, rol</p>
+                <p className="text-sm text-gray-500">Nombre, email, rol y foto</p>
               </div>
               <Chevron open={openAccount} />
             </button>
+
             {openAccount && (
               <div className="px-5 pb-5">
                 <div className="space-y-5">
+                  {/* Foto de perfil */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Foto de perfil</label>
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        {avatarPreview ? (
+                          <img src={avatarPreview} alt="Preview" className="h-20 w-20 rounded-full object-cover ring-2 ring-gray-200" />
+                        ) : (
+                          <div className="h-20 w-20 rounded-full bg-gray-200 grid place-items-center text-gray-600">
+                            IMG
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer w-fit">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) {
+                                setAvatarFile(f);
+                                const url = URL.createObjectURL(f);
+                                setAvatarPreview(url);
+                                setMsgType("success");
+                                setMsg("Nueva foto seleccionada. No olvides “Guardar cambios”.");
+                              }
+                            }}
+                          />
+                          <span>Elegir archivo…</span>
+                        </label>
+
+                        {form.avatarUrl && !avatarFile && (
+                          <button
+                            type="button"
+                            className="text-sm text-rose-700 hover:underline w-fit"
+                            onClick={handleDeleteAvatar}
+                          >
+                            Quitar foto actual
+                          </button>
+                        )}
+                        {avatarFile && <span className="text-xs text-gray-600">{avatarFile.name} — listo para subir.</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nombre / email / rol */}
                   <div>
                     <label className="block text-sm font-medium mb-1">Nombre</label>
                     <input
@@ -372,16 +572,26 @@ export default function ProfilePage() {
                       placeholder="Tu nombre completo"
                     />
                   </div>
+
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Email</label>
-                      <input value={form.email} disabled className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600" />
+                      <input
+                        value={form.email}
+                        disabled
+                        className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Rol</label>
-                      <input value={form.role} disabled className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600 capitalize" />
+                      <input
+                        value={form.role}
+                        disabled
+                        className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600 capitalize"
+                      />
                     </div>
                   </div>
+
                   <div className="flex justify-end">
                     <button
                       onClick={async () => {
@@ -393,8 +603,7 @@ export default function ProfilePage() {
                         }
                       }}
                       disabled={savingProfile}
-                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60"
-                    >
+                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60">
                       {savingProfile ? "Guardando..." : "Guardar cambios"}
                     </button>
                   </div>
@@ -405,7 +614,10 @@ export default function ProfilePage() {
 
           {/* UBICACIÓN */}
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-            <button onClick={() => setOpenAddress((o) => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50">
+            <button
+              onClick={() => setOpenAddress((o) => !o)}
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+            >
               <div>
                 <h2 className="text-lg font-semibold pr-40">Buscar dirección</h2>
                 <p className="text-sm text-gray-500">Ingresá una dirección, usá GPS o mové el punto en mapa</p>
@@ -431,7 +643,12 @@ export default function ProfilePage() {
                   {isFocused && allowSuggests && suggests.length > 0 && (
                     <div className="mt-2 rounded-lg border bg-white shadow-sm overflow-hidden max-h-64 overflow-y-auto">
                       {suggests.map((s) => (
-                        <button key={s.id} type="button" onMouseDown={() => pickSuggestion(s)} className="w-full text-left px-3 py-2 hover:bg-gray-50">
+                        <button
+                          key={s.id}
+                          type="button"
+                          onMouseDown={() => pickSuggestion(s)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                        >
                           {s.label}
                         </button>
                       ))}
@@ -460,33 +677,33 @@ export default function ProfilePage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm mb-1">País *</label>
-                    <input name="country" value={addr.country} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
+                    <input name="country" value={addr.country} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
                     <label className="block text-sm mb-1">Provincia / Estado *</label>
-                    <input name="state" value={addr.state} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
+                    <input name="state" value={addr.state} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
                     <label className="block text sm mb-1">Ciudad *</label>
-                    <input name="city" value={addr.city} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
+                    <input name="city" value={addr.city} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div>
                     <label className="block text sm mb-1">Código Postal *</label>
-                    <input name="postalCode" value={addr.postalCode} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
+                    <input name="postalCode" value={addr.postalCode} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                   <div className="md:col-span-2 grid md:grid-cols-3 gap-4">
                     <div className="md:col-span-2">
                       <label className="block text-sm mb-1">Calle *</label>
-                      <input name="street" value={addr.street} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
+                      <input name="street" value={addr.street} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                     </div>
                     <div>
                       <label className="block text-sm mb-1">Número *</label>
-                      <input name="number" value={addr.number} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
+                      <input name="number" value={addr.number} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                     </div>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm mb-1">Depto / Piso / Unidad</label>
-                    <input name="unit" value={addr.unit} onChange={(e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
+                    <input name="unit" value={addr.unit} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
                   </div>
                 </div>
 
@@ -541,10 +758,207 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* DISPONIBILIDAD (solo si existe Professional) */}
+          {/* DOCUMENTOS (solo Professional) */}
+          {hasProfessional && (
+            <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <button
+                onClick={() => setOpenDocuments((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+              >
+                <div>
+                  <h2 className="text-lg font-semibold">Documentos</h2>
+                  <p className="text-sm text-gray-500">Antecedentes penales y matrícula</p>
+                </div>
+                <Chevron open={openDocuments} />
+              </button>
+
+              {openDocuments && (
+                <div className="px-5 pb-5">
+                  {docsMsg && (
+                    <div className="mb-3 text-sm rounded-lg px-3 py-2 border bg-indigo-50 border-indigo-200 text-indigo-700">{docsMsg}</div>
+                  )}
+
+                  {/* Antecedentes penales */}
+                  <div className="p-4 border rounded-xl mb-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold">Certificado de antecedentes</h3>
+                          <span
+                            className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                              documents?.criminalRecord?.url
+                                ? crExpired
+                                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-gray-50 text-gray-700 border-gray-200"
+                            }`}
+                          >
+                            {documents?.criminalRecord?.url ? (crExpired ? "vencido" : "vigente") : "pendiente"}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Subí tu certificado en PDF. Podés indicar la fecha de vencimiento (si el BE lo soporta).
+                        </p>
+                        {documents?.criminalRecord?.url && (
+                          <a
+                            href={documents.criminalRecord.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm text-indigo-700 hover:underline"
+                          >
+                            Ver archivo actual
+                          </a>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-600">{savingDocs ? "Procesando…" : null}</div>
+                    </div>
+
+                    <div className="mt-3 grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm mb-1">Archivo (PDF)</label>
+                        <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) {
+                                setDocCrFile(f);
+                                setDocsMsg("PDF listo para subir. Hacé clic en “Subir antecedentes”.");
+                              }
+                            }}
+                          />
+                          <span>Elegir archivo…</span>
+                        </label>
+                        <div className="text-xs text-gray-600 mt-1">
+                          {docCrFile
+                            ? docCrFile.name
+                            : documents?.criminalRecord?.url
+                            ? "Archivo cargado"
+                            : "Ningún archivo seleccionado"}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm mb-1">Vence (opcional)</label>
+                        <input
+                          type="date"
+                          value={docCrExpiresAt}
+                          onChange={(e) => setDocCrExpiresAt(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2"
+                        />
+                        {documents?.criminalRecord?.expiresAt && (
+                          <div className="text-xs text-gray-600 mt-1">
+                            Actual: {new Date(documents.criminalRecord.expiresAt).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        onClick={() => saveDocuments({ which: "cr" })}
+                        disabled={savingDocs}
+                        className="px-3 py-2 rounded-lg bg-[#0a0e17] text-white disabled:opacity-60"
+                      >
+                        {savingDocs ? "Subiendo…" : "Subir antecedentes"}
+                      </button>
+                      {documents?.criminalRecord && (
+                        <button
+                          onClick={() => removeDocument("cr")}
+                          disabled={savingDocs}
+                          className="px-3 py-2 rounded-lg border hover:bg-gray-50"
+                        >
+                          Eliminar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Matrícula */}
+                  <div className="p-4 border rounded-xl">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold">Matrícula profesional</h3>
+                          <span
+                            className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                              documents?.license?.url
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-gray-50 text-gray-700 border-gray-200"
+                            }`}
+                          >
+                            {documents?.license?.url ? "cargada" : "pendiente"}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600">Subí tu matrícula en PDF.</p>
+                        {documents?.license?.url && (
+                          <a
+                            href={documents.license.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm text-indigo-700 hover:underline"
+                          >
+                            Ver archivo actual
+                          </a>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-600">{savingDocs ? "Procesando…" : null}</div>
+                    </div>
+
+                    <div className="mt-3">
+                      <label className="block text-sm mb-1">Archivo (PDF)</label>
+                      <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) {
+                              setDocLicFile(f);
+                              setDocsMsg("PDF listo para subir. Hacé clic en “Subir matrícula”.");
+                            }
+                          }}
+                        />
+                        <span>Elegir archivo…</span>
+                      </label>
+                      <div className="text-xs text-gray-600 mt-1">
+                        {docLicFile ? docLicFile.name : documents?.license?.url ? "Archivo cargado" : "Ningún archivo seleccionado"}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        onClick={() => saveDocuments({ which: "lic" })}
+                        disabled={savingDocs}
+                        className="px-3 py-2 rounded-lg bg-[#0a0e17] text-white disabled:opacity-60"
+                      >
+                        {savingDocs ? "Subiendo…" : "Subir matrícula"}
+                      </button>
+                      {documents?.license && (
+                        <button
+                          onClick={() => removeDocument("lic")}
+                          disabled={savingDocs}
+                          className="px-3 py-2 rounded-lg border hover:bg-gray-50"
+                        >
+                          Eliminar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* DISPONIBILIDAD */}
           {hasProfessional && (
             <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
-              <button onClick={() => setOpenAvailability((o) => !o)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50">
+              <button
+                onClick={() => setOpenAvailability((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+              >
                 <div>
                   <h2 className="text-lg font-semibold">Disponibilidad</h2>
                   <p className="text-sm text-gray-500">Agenda semanal y horarios</p>
@@ -565,13 +979,14 @@ export default function ProfilePage() {
                           <div key={d.key} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl bg-white">
                             <div className="flex items-center gap-3 min-w-[130px]">
                               <input
+                                id={`day-${d.key}`}
                                 type="checkbox"
                                 checked={rows[idx].active}
                                 onChange={(e) =>
                                   setRows((a) => a.map((r, i) => (i === idx ? { ...r, active: e.target.checked } : r)))
                                 }
                               />
-                              <span>{d.label}</span>
+                              <label htmlFor={`day-${d.key}`}>{d.label}</label>
                             </div>
                             <div className="flex items-center gap-3 sm:ml-auto">
                               <div className="flex items-center gap-2">
@@ -581,7 +996,9 @@ export default function ProfilePage() {
                                   step="900"
                                   value={rows[idx].from}
                                   disabled={!rows[idx].active}
-                                  onChange={(e) => setRows((a) => a.map((r, i) => (i === idx ? { ...r, from: e.target.value } : r)))}
+                                  onChange={(e) =>
+                                    setRows((a) => a.map((r, i) => (i === idx ? { ...r, from: e.target.value } : r)))
+                                  }
                                   className="border rounded-lg px-3 py-2 text-sm"
                                 />
                               </div>
@@ -592,7 +1009,9 @@ export default function ProfilePage() {
                                   step="900"
                                   value={rows[idx].to}
                                   disabled={!rows[idx].active}
-                                  onChange={(e) => setRows((a) => a.map((r, i) => (i === idx ? { ...r, to: e.target.value } : r)))}
+                                  onChange={(e) =>
+                                    setRows((a) => a.map((r, i) => (i === idx ? { ...r, to: e.target.value } : r)))
+                                  }
                                   className="border rounded-lg px-3 py-2 text-sm"
                                 />
                               </div>
@@ -602,12 +1021,18 @@ export default function ProfilePage() {
                       </div>
                       <div className="flex justify-end gap-3 mt-4">
                         <button
-                          onClick={() => setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))}
+                          onClick={() =>
+                            setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))
+                          }
                           className="px-4 py-2 rounded border"
                         >
                           Restablecer
                         </button>
-                        <button onClick={onSaveAgenda} disabled={savingAgenda} className="px-4 py-2 rounded bg-[#0a0e17] text-white">
+                        <button
+                          onClick={onSaveAgenda}
+                          disabled={savingAgenda}
+                          className="px-4 py-2 rounded bg-[#0a0e17] text-white"
+                        >
                           {savingAgenda ? "Guardando…" : "Guardar agenda"}
                         </button>
                       </div>
@@ -622,7 +1047,11 @@ export default function ProfilePage() {
             <button
               onClick={() => navigate("/dashboard/professional")}
               disabled={!essentialsOk}
-              className={`px-5 py-2 rounded-lg ${essentialsOk ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-gray-200 text-gray-500 cursor-not-allowed"}`}
+              className={`px-5 py-2 rounded-lg ${
+                essentialsOk
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
+              }`}
             >
               Ir a mi panel
             </button>

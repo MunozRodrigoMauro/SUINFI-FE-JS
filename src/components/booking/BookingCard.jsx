@@ -3,10 +3,22 @@ import React from "react";
 import BookingStatusBadge from "./BookingStatusBadge";
 import { formatDateTime } from "../../utils/datetime";
 
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
+const absUrl = (u) => (!u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`);
+
 export default function BookingCard({ booking, role, rightSlot, onOpenChat }) {
-  const clientName = booking?.client?.name || booking?.client?.email || "Cliente";
-  const proName = booking?.professional?.user?.name || booking?.professional?.user?.email || "Profesional";
+  const clientUser = booking?.client || booking?.client?.user || null;
+  const proUser = booking?.professional?.user || null;
+
+  const clientName = clientUser?.name || clientUser?.email || "Cliente";
+  const proName = proUser?.name || proUser?.email || "Profesional";
   const who = role === "pro" ? clientName : proName;
+
+  const whoAvatar = role === "pro" ? clientUser?.avatarUrl : proUser?.avatarUrl;
+  const avatarUrl = whoAvatar ? absUrl(whoAvatar) : "";
+  const initial = (who?.[0] || "U").toUpperCase();
+
   const serviceName = booking?.service?.name || "Servicio";
   const when = formatDateTime(booking?.scheduledAt);
 
@@ -31,10 +43,15 @@ export default function BookingCard({ booking, role, rightSlot, onOpenChat }) {
       title={onOpenChat ? "Abrir chat" : undefined}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold leading-5">{who}</h3>
-          <p className="text-sm text-gray-600">{serviceName}</p>
-          <p className="text-sm text-gray-600">{when}</p>
+        <div className="flex items-start gap-3">
+          <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200 grid place-items-center font-semibold">
+            {avatarUrl ? <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" /> : initial}
+          </div>
+          <div>
+            <h3 className="font-semibold leading-5">{who}</h3>
+            <p className="text-sm text-gray-600">{serviceName}</p>
+            <p className="text-sm text-gray-600">{when}</p>
+          </div>
         </div>
         <BookingStatusBadge status={booking?.status} />
       </div>

@@ -14,12 +14,14 @@ import { haversineKm, fmtKm } from "../utils/geo";
 import MapCanvas from "../components/map/ProfessionalRequest/MapCanvas";
 import { getMyProfile } from "../api/userService";
 import ChatDock from "../components/chat/ChatDock";
-
-// ⬇️ nuevo hook
 import useLiveProLocations from "../hooks/useLiveProLocations";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const MAP_KEY = import.meta.env.VITE_MAP_API_KEY;
+
+// Absolutizar assets para avatares
+const ASSET_BASE = API.replace(/\/api\/?$/, "");
+const absUrl = (u) => (!u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`);
 
 // Geocoder MapTiler
 async function geocode(q) {
@@ -35,7 +37,10 @@ async function geocode(q) {
   }));
 }
 async function reverseGeocode(lat, lng) {
-  const url = `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
+  const url = `https://api/maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`.replace(
+    "https://api/",
+    "https://api."
+  ); // small guard
   const res = await fetch(url);
   const data = await res.json();
   const f = (data?.features || [])[0];
@@ -63,10 +68,8 @@ function UserDashboard() {
   const [categoryId, setCategoryId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [availableNow, setAvailableNow] = useState(false);
-
   const [origin, setOrigin] = useState(null);
   const [radiusKm, setRadiusKm] = useState(10);
-
   const [query, setQuery] = useState("");
   const [suggests, setSuggests] = useState([]);
   const [isFocused, setIsFocused] = useState(false);
@@ -75,7 +78,6 @@ function UserDashboard() {
 
   const [categories, setCategories] = useState([]);
   const [services, setServices] = useState([]);
-
   const [allResults, setAllResults] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,15 +85,14 @@ function UserDashboard() {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
 
-  // ⬇️ posiciones live desde el hook (Map<userId, {lat,lng,atMs,isAvailableNow}>)
+  // posiciones live
   const livePositions = useLiveProLocations({ ttlMs: 120000 });
 
   const [recent, setRecent] = useState([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
-
   const [recentChats, setRecentChats] = useState([]);
 
-  // Disponibles ahora (paginado de a 3) — AL FINAL
+  // Disponibles ahora (paginado de a 3)
   const [onlinePros, setOnlinePros] = useState([]);
   const [loadingOnline, setLoadingOnline] = useState(true);
   const [onlinePage, setOnlinePage] = useState(1);
@@ -124,23 +125,20 @@ function UserDashboard() {
     let mounted = true;
     (async () => {
       try {
-        const [cats, servs] = await Promise.all([
-          axiosUser.get(`${API}/categories`),
-          axiosUser.get(`${API}/services`),
-        ]);
+        const [cats, servs] = await Promise.all([axiosUser.get(`${API}/categories`), axiosUser.get(`${API}/services`)]);
         if (!mounted) return;
         setCategories(cats.data || []);
         setServices(servs.data || []);
       } catch {}
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const filteredServices = useMemo(() => {
     if (!categoryId) return services;
-    return (services || []).filter(
-      (s) => s?.category?._id === categoryId || s?.category === categoryId
-    );
+    return (services || []).filter((s) => s?.category?._id === categoryId || s?.category === categoryId);
   }, [services, categoryId]);
 
   // Perfil + origen
@@ -188,8 +186,7 @@ function UserDashboard() {
           return;
         }
         const a = me?.address || {};
-        const line = [a.street && `${a.street} ${a.number || ""}`, a.city, a.state, a.postalCode, a.country]
-          .filter(Boolean).join(", ");
+        const line = [a.street && `${a.street} ${a.number || ""}`, a.city, a.state, a.postalCode, a.country].filter(Boolean).join(", ");
         if (line) {
           const [hit] = await geocode(line);
           if (hit?.lat != null && hit?.lng != null) {
@@ -208,12 +205,17 @@ function UserDashboard() {
   // Autocomplete
   useEffect(() => {
     window.clearTimeout(geoTimer.current);
-    if (!isFocused || !allowSuggests || !query) { setSuggests([]); return; }
+    if (!isFocused || !allowSuggests || !query) {
+      setSuggests([]);
+      return;
+    }
     geoTimer.current = window.setTimeout(async () => {
       try {
         const s = await geocode(query);
         setSuggests(s.slice(0, 6));
-      } catch { setSuggests([]); }
+      } catch {
+        setSuggests([]);
+      }
     }, 300);
   }, [query, isFocused, allowSuggests]);
 
@@ -235,8 +237,7 @@ function UserDashboard() {
       return;
     }
     const a = u?.address || {};
-    const line = [a.street && `${a.street} ${a.number || ""}`, a.city, a.state, a.postalCode, a.country]
-      .filter(Boolean).join(", ");
+    const line = [a.street && `${a.street} ${a.number || ""}`, a.city, a.state, a.postalCode, a.country].filter(Boolean).join(", ");
     if (!line) return alert("Tu perfil no tiene dirección suficiente. Completala en Mi Perfil o usá GPS.");
     try {
       const [hit] = await geocode(line);
@@ -267,10 +268,13 @@ function UserDashboard() {
     );
   };
 
-  // Socket: refrescos por disponibilidad/presencia (el hook maneja las posiciones live)
+  // Socket refresh
   useEffect(() => {
     if (!socket) return;
-    const refresh = () => { refetchCatalog(); refetchOnline(); };
+    const refresh = () => {
+      refetchCatalog();
+      refetchOnline();
+    };
     socket.on("availability:update", refresh);
     socket.on("availability:changed", refresh);
     socket.on("presence:online", refresh);
@@ -285,7 +289,7 @@ function UserDashboard() {
     };
   }, []);
 
-  // === Catálogo (fetch + anotación inicial)
+  // === Catálogo
   const refetchCatalog = async () => {
     setLoading(true);
     try {
@@ -295,7 +299,6 @@ function UserDashboard() {
         if (availableNow) params.availableNow = true;
         if (categoryId) params.categoryId = categoryId;
         if (serviceId) params.serviceId = serviceId;
-
         const { data } = await axiosUser.get(`${API}/professionals/nearby`, { params });
         list = Array.isArray(data) ? data : [];
       } else {
@@ -307,21 +310,17 @@ function UserDashboard() {
         list = Array.isArray(data) ? data : data.items || [];
       }
 
-      // anotar con posiciones live (si existen) + distancia
+      // anotación live + distancia
       const annotated = (list || []).map((p) => {
         const fallback = normalizeProLoc(p);
         const userId = p?.user?._id;
         const live = userId ? livePositions.get(userId) : null;
-
         const loc = live ? { lat: live.lat, lng: live.lng } : fallback;
-
         const d =
           origin?.lat != null && loc?.lat != null
             ? haversineKm(origin, { lat: loc.lat, lng: loc.lng })
             : null;
-
         const isOn = typeof live?.isAvailableNow === "boolean" ? live.isAvailableNow : !!p.isAvailableNow;
-
         return { ...p, _distanceKm: d, _plotLoc: loc, _isOn: isOn };
       });
 
@@ -340,28 +339,22 @@ function UserDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [origin?.lat, origin?.lng, radiusKm, availableNow, categoryId, serviceId]);
 
-  // 🚀 Reanotar SOLO posiciones/distancias cuando cambia livePositions (sin refetch)
+  // Reanotar con livePositions
   useEffect(() => {
     if (!allResults.length) return;
     const next = allResults.map((p) => {
       const fallback = normalizeProLoc(p);
       const userId = p?.user?._id;
       const live = userId ? livePositions.get(userId) : null;
-
       const loc = live ? { lat: live.lat, lng: live.lng } : fallback;
-
       const d =
         origin?.lat != null && loc?.lat != null
           ? haversineKm(origin, { lat: loc.lat, lng: loc.lng })
           : p._distanceKm ?? null;
-
       const isOn = typeof live?.isAvailableNow === "boolean" ? live.isAvailableNow : !!p.isAvailableNow;
-
       return { ...p, _plotLoc: loc, _distanceKm: d, _isOn: isOn };
     });
-
     setAllResults(next);
-    // mantener paginado actual
     const start = (page - 1) * PAGE_SIZE;
     setItems(next.slice(start, start + PAGE_SIZE));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -374,20 +367,24 @@ function UserDashboard() {
     setItems(allResults.slice(start, start + PAGE_SIZE));
   };
 
-  useEffect(() => { setServiceId(""); }, [categoryId]);
+  useEffect(() => {
+    setServiceId("");
+  }, [categoryId]);
 
   // Reservas recientes
   const fetchRecent = async () => {
     setLoadingRecent(true);
     try {
       const list = await getMyBookings();
-      const safe = Array.isArray(list)
-        ? list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        : [];
+      const safe = Array.isArray(list) ? list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : [];
       setRecent(safe.slice(0, RECENT_LIMIT));
-    } finally { setLoadingRecent(false); }
+    } finally {
+      setLoadingRecent(false);
+    }
   };
-  useEffect(() => { fetchRecent(); }, []);
+  useEffect(() => {
+    fetchRecent();
+  }, []);
   useEffect(() => {
     if (!socket) return;
     const onCreated = () => fetchRecent();
@@ -400,8 +397,10 @@ function UserDashboard() {
     };
   }, []);
 
-  // Chats recientes (para el dock y tarjetas)
-  useEffect(() => { (async () => setRecentChats(await fetchMyChats()))(); }, []);
+  // Chats recientes
+  useEffect(() => {
+    (async () => setRecentChats(await fetchMyChats()))();
+  }, []);
 
   // Disponibles ahora
   const refetchOnline = async () => {
@@ -414,33 +413,31 @@ function UserDashboard() {
       setLoadingOnline(false);
     }
   };
-  useEffect(() => { refetchOnline(); }, []);
+  useEffect(() => {
+    refetchOnline();
+  }, []);
 
   const displayName = (u) => u?.name || u?.email?.split("@")[0] || "Usuario";
 
-  // Marcadores: color según _isOn live/BE
+  // Marcadores
   const mapMarkers = useMemo(() => {
     return (allResults || [])
-      .map(p => ({
-        loc: p?._plotLoc,
-        name: p?.user?.name || "Profesional",
-        isOn: !!p?._isOn,
-      }))
-      .filter(x => x.loc && Number.isFinite(x.loc.lat) && Number.isFinite(x.loc.lng))
-      .map(x => ({
-        lat: x.loc.lat,
-        lng: x.loc.lng,
-        color: x.isOn ? "#10b981" : "#94a3b8",
-        title: x.name,
-      }));
+      .map((p) => ({ loc: p?._plotLoc, name: p?.user?.name || "Profesional", isOn: !!p?._isOn }))
+      .filter((x) => x.loc && Number.isFinite(x.loc.lat) && Number.isFinite(x.loc.lng))
+      .map((x) => ({ lat: x.loc.lat, lng: x.loc.lng, color: x.isOn ? "#10b981" : "#94a3b8", title: x.name }));
   }, [allResults]);
 
-  // Seguir ubicación del usuario (en vivo)
+  // Seguir ubicación del usuario
   const [liveOrigin, setLiveOrigin] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("suinfi:liveOrigin") || "false"); } catch { return false; }
+    try {
+      return JSON.parse(localStorage.getItem("suinfi:liveOrigin") || "false");
+    } catch {
+      return false;
+    }
   });
-  useEffect(() => { localStorage.setItem("suinfi:liveOrigin", JSON.stringify(liveOrigin)); }, [liveOrigin]);
-
+  useEffect(() => {
+    localStorage.setItem("suinfi:liveOrigin", JSON.stringify(liveOrigin));
+  }, [liveOrigin]);
   useEffect(() => {
     if (!liveOrigin || !navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
@@ -463,9 +460,15 @@ function UserDashboard() {
               <label className="block text-xs text-gray-500 mb-1">Ingresá una ubicación</label>
               <input
                 value={query}
-                onChange={(e) => { setQuery(e.target.value); setAllowSuggests(true); }}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setAllowSuggests(true);
+                }}
                 onFocus={() => setIsFocused(true)}
-                onBlur={() => { setIsFocused(false); setTimeout(() => setSuggests([]), 120); }}
+                onBlur={() => {
+                  setIsFocused(false);
+                  setTimeout(() => setSuggests([]), 120);
+                }}
                 placeholder="Calle, número, ciudad…"
                 className="w-full border rounded-lg px-3 py-2"
               />
@@ -500,11 +503,7 @@ function UserDashboard() {
                 </button>
               </div>
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={liveOrigin}
-                  onChange={(e) => setLiveOrigin(e.target.checked)}
-                />
+                <input type="checkbox" checked={liveOrigin} onChange={(e) => setLiveOrigin(e.target.checked)} />
                 <span className="text-sm">Seguir mi ubicación (en vivo)</span>
               </label>
             </div>
@@ -521,6 +520,7 @@ function UserDashboard() {
               />
               <span className="text-sm w-12 text-right">{radiusKm} km</span>
             </div>
+
             <label className="inline-flex items-center gap-2 mb-3">
               <input type="checkbox" checked={availableNow} onChange={(e) => setAvailableNow(e.target.checked)} />
               <span className="text-sm">Mostrar solo “Disponibles ahora”</span>
@@ -536,7 +536,9 @@ function UserDashboard() {
                 >
                   <option value="">Todas</option>
                   {(categories || []).map((c) => (
-                    <option key={c._id} value={c._id}>{c.name}</option>
+                    <option key={c._id} value={c._id}>
+                      {c.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -549,16 +551,22 @@ function UserDashboard() {
                 >
                   <option value="">Todos</option>
                   {(filteredServices || []).map((s) => (
-                    <option key={s._id} value={s._id}>{s.name}</option>
+                    <option key={s._id} value={s._id}>
+                      {s.name}
+                    </option>
                   ))}
                 </select>
               </div>
             </div>
 
             <div className="text-sm text-gray-600">
-              {origin?.lat != null
-                ? <>Origen: <b>{origin.lat.toFixed(5)}, {origin.lng.toFixed(5)}</b></>
-                : <>Elegí una ubicación para ver profesionales cercanos.</>}
+              {origin?.lat != null ? (
+                <>
+                  Origen: <b>{origin.lat.toFixed(5)}, {origin.lng.toFixed(5)}</b>
+                </>
+              ) : (
+                <>Elegí una ubicación para ver profesionales cercanos.</>
+              )}
             </div>
           </div>
 
@@ -599,7 +607,7 @@ function UserDashboard() {
                   <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
                   <div className="h-3 bg-gray-200 rounded w-1/2 mb-4" />
                   <div className="flex gap-2 mb-4">
-                    <div className="h-6 w-20 bg-gray-200 rounded-full" />
+                    <div className="h-6 w-20 bg-gray-2 00 rounded-full" />
                     <div className="h-6 w-16 bg-gray-200 rounded-full" />
                   </div>
                   <div className="h-8 bg-gray-200 rounded" />
@@ -617,15 +625,26 @@ function UserDashboard() {
               const servicesNames = (p.services || []).map((s) => s?.name).filter(Boolean);
               const firstService = servicesNames[0] || "Servicio";
               const restCount = Math.max(0, servicesNames.length - 1);
+              const avatar = p?.user?.avatarUrl ? absUrl(p.user.avatarUrl) : "";
+              const initial = (name[0] || "P").toUpperCase();
 
               return (
-                <div key={p._id} className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
+                <div
+                  key={p._id}
+                  className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition"
+                >
                   <div className="relative h-28 bg-gradient-to-r from-slate-800 to-slate-700">
-                    <span className={`absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border ${p._isOn ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                    <span
+                      className={`absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border ${
+                        p._isOn
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-gray-50 text-gray-600 border-gray-200"
+                      }`}
+                    >
                       {p._isOn ? "Disponible ahora" : "Offline"}
                     </span>
-                    <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white grid place-items-center text-slate-800 font-bold">
-                      {(name[0] || "P").toUpperCase()}
+                    <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white overflow-hidden grid place-items-center text-slate-800 font-bold">
+                      {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : initial}
                     </div>
                   </div>
 
@@ -635,7 +654,9 @@ function UserDashboard() {
                         <h3 className="text-base font-semibold leading-5 line-clamp-1">{name}</h3>
                         <p className="text-xs text-gray-600 line-clamp-1">{email}</p>
                       </div>
-                      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⭐ 4.8</div>
+                      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        ⭐ 4.8
+                      </div>
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -649,6 +670,38 @@ function UserDashboard() {
                       )}
                     </div>
 
+                    {/* Documentos */}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(() => {
+                        const d = p.documents || {};
+                        const cr = d.criminalRecord;
+                        const lic = d.license;
+                        const crExpired = cr?.expiresAt ? new Date(cr.expiresAt).getTime() < Date.now() : false;
+                        return (
+                          <>
+                            <span
+                              className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                                cr?.url
+                                  ? crExpired
+                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-gray-50 text-gray-700 border-gray-200"
+                              }`}
+                            >
+                              Antecedentes: {cr?.url ? (crExpired ? "vencido" : "vigente") : "pendiente"}
+                            </span>
+                            <span
+                              className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                                lic?.url ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"
+                              }`}
+                            >
+                              Matrícula: {lic?.url ? "cargada" : "pendiente"}
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </div>
+
                     {origin?.lat != null && p?._distanceKm != null && (
                       <div className="mt-2 text-xs text-gray-600">A {fmtKm(p._distanceKm)} de tu ubicación</div>
                     )}
@@ -656,13 +709,13 @@ function UserDashboard() {
                     <div className="mt-4 flex justify-end gap-2">
                       <button
                         onClick={() => navigate(`/chats/${p?.user?._id}`)}
-                        className="text-sm font-medium bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
+                        className="text-sm font-medium bg:white bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
                       >
                         Chatear
                       </button>
                       <button
                         onClick={() => navigate(`/professional/${p._id}?reserve=1`)}
-                        className="text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-md shadow-sm cursor-pointer"
+                        className="text-sm font-medium text:white text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-md shadow-sm cursor-pointer"
                       >
                         Reservar
                       </button>
@@ -679,15 +732,21 @@ function UserDashboard() {
             <button
               disabled={page <= 1}
               onClick={() => goToPage(page - 1)}
-              className={`px-3 py-1 rounded border cursor-pointer ${page <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
+              className={`px-3 py-1 rounded border cursor-pointer ${
+                page <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
+              }`}
             >
               ←
             </button>
-            <span className="text-sm text-gray-700">Página {page} de {pages}</span>
+            <span className="text-sm text-gray-700">
+              Página {page} de {pages}
+            </span>
             <button
               disabled={page >= pages}
               onClick={() => goToPage(page + 1)}
-              className={`px-3 py-1 rounded border cursor-pointer ${page >= pages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
+              className={`px-3 py-1 rounded border cursor-pointer ${
+                page >= pages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
+              }`}
             >
               →
             </button>
@@ -698,7 +757,10 @@ function UserDashboard() {
         <div className="text-left mb-16">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold">📋 Reservas recientes</h2>
-            <button onClick={() => navigate("/bookings")} className="text-sm px-3 py-1.5 rounded-md bg-slate-800 text-white hover:bg-black cursor-pointer">
+            <button
+              onClick={() => navigate("/bookings")}
+              className="text-sm px-3 py-1.5 rounded-md bg-slate-800 text-white hover:bg-black cursor-pointer"
+            >
               Ver todas
             </button>
           </div>
@@ -708,52 +770,64 @@ function UserDashboard() {
           ) : recent.length === 0 ? (
             <div className="border rounded-xl p-6 bg-white">
               <p className="text-gray-600 mb-3">Aún no tenés reservas.</p>
-              <button onClick={() => navigate("/dashboard/user")} className="text-sm px-3 py-1.5 rounded bg-amber-500 text-white hover:bg-amber-600">
+              <button
+                onClick={() => navigate("/dashboard/user")}
+                className="text-sm px-3 py-1.5 rounded bg-amber-500 text-white hover:bg-amber-600"
+              >
                 Buscar profesionales
               </button>
             </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-6">
-              {recent.map((b) => (
-                <div
-                  key={b._id}
-                  className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition"
-                  onClick={() => {
-                    const peerId = b?.professional?.user?._id;
-                    if (peerId) navigate(`/chats/${peerId}`);
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
+              {recent.map((b) => {
+                const name = b?.professional?.user?.name || b?.professional?.user?.email || "Profesional";
+                const photo = b?.professional?.user?.avatarUrl ? absUrl(b.professional.user.avatarUrl) : "";
+                const initial = (name?.[0] || "P").toUpperCase();
+
+                return (
+                  <div
+                    key={b._id}
+                    className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition"
+                    onClick={() => {
                       const peerId = b?.professional?.user?._id;
                       if (peerId) navigate(`/chats/${peerId}`);
-                    }
-                  }}
-                  title="Abrir chat con el profesional"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold leading-5">
-                        {b?.professional?.user?.name || b?.professional?.user?.email || "Profesional"}
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        const peerId = b?.professional?.user?._id;
+                        if (peerId) navigate(`/chats/${peerId}`);
+                      }
+                    }}
+                    title="Abrir chat con el profesional"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200 grid place-items-center font-semibold">
+                          {photo ? <img src={photo} alt="avatar" className="h-full w-full object-cover" /> : initial}
+                        </div>
+                        <div>
+                          <div className="font-semibold leading-5">{name}</div>
+                          <div className="text-sm text-gray-700">{b?.service?.name || "Servicio"}</div>
+                          <div className="text-sm text-gray-600">{formatDateTime(b?.scheduledAt)}</div>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-700">{b?.service?.name || "Servicio"}</div>
-                      <div className="text-sm text-gray-600">{formatDateTime(b?.scheduledAt)}</div>
+                      <BookingStatusBadge status={b?.status} />
                     </div>
-                    <BookingStatusBadge status={b?.status} />
+                    {b?.note && (
+                      <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
+                        {b.note}
+                      </p>
+                    )}
                   </div>
-                  {b?.note && (
-                    <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
-                      {b.note}
-                    </p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* 🟢 Disponibles ahora — AL FINAL (paginado 3) */}
+        {/* 🟢 Disponibles ahora */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -767,7 +841,9 @@ function UserDashboard() {
                 <button
                   onClick={() => setOnlinePage((p) => Math.max(1, p - 1))}
                   disabled={onlinePage <= 1}
-                  className={`px-2 py-1 rounded border cursor-pointer ${onlinePage <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
+                  className={`px-2 py-1 rounded border cursor-pointer ${
+                    onlinePage <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
+                  }`}
                   title="Anterior"
                 >
                   ←
@@ -778,7 +854,9 @@ function UserDashboard() {
                 <button
                   onClick={() => setOnlinePage((p) => Math.min(onlinePages, p + 1))}
                   disabled={onlinePage >= onlinePages}
-                  className={`px-2 py-1 rounded border cursor-pointer ${onlinePage >= onlinePages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
+                  className={`px-2 py-1 rounded border cursor-pointer ${
+                    onlinePage >= onlinePages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
+                  }`}
                   title="Siguiente"
                 >
                   →
@@ -799,27 +877,32 @@ function UserDashboard() {
                 const servicesNames = (p.services || []).map((s) => s?.name).filter(Boolean);
                 const firstService = servicesNames[0] || "Servicio";
                 const restCount = Math.max(0, servicesNames.length - 1);
+                const avatar = p?.user?.avatarUrl ? absUrl(p.user.avatarUrl) : "";
+                const initial = (name[0] || "P").toUpperCase();
 
                 return (
-                  <div key={p._id} className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
+                  <div
+                    key={p._id}
+                    className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition"
+                  >
                     <div className="relative h-24 bg-gradient-to-r from-emerald-700 to-emerald-600">
                       <span className="absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
                         Disponible ahora
                       </span>
-                      <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white grid place-items-center text-emerald-700 font-bold">
-                        {(name[0] || "P").toUpperCase()}
+                      <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white overflow-hidden grid place-items-center text-emerald-700 font-bold">
+                        {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : initial}
                       </div>
                     </div>
-
                     <div className="pt-8 px-4 pb-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="text-base font-semibold leading-5 line-clamp-1">{name}</h3>
                           <p className="text-xs text-gray-600 line-clamp-1">{email}</p>
                         </div>
-                        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⭐ {p?.averageRating || 4.8}</div>
+                        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                          ⭐ {p?.averageRating || 4.8}
+                        </div>
                       </div>
-
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                           {firstService}
@@ -830,7 +913,6 @@ function UserDashboard() {
                           </span>
                         )}
                       </div>
-
                       <div className="mt-4 flex justify-end gap-2">
                         <button
                           onClick={() => navigate(`/chats/${p?.user?._id}`)}

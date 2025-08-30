@@ -1,20 +1,18 @@
-// src/auth/AuthContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { loginUser, verifyToken } from "../api/userService";
-import { socket, joinUserRoom, leaveUserRoom } from "../lib/socket"; // ⬅️ NUEVO
+import { loginUser, verifyToken, getMyProfile } from "../api/userService";
+import { socket, joinUserRoom, leaveUserRoom } from "../lib/socket";
 
 const AuthContext = createContext();
 
 const isEmpty = (v) => v == null || String(v).trim() === "";
 
-// src/auth/AuthContext.jsx
+// Solo aplica a profesionales: obliga a completar perfil básico
 function needsOnboarding(user) {
   if (!user || user.role !== "professional") return false;
   if (!user.name || String(user.name).trim().length < 2) return true;
-
   const a = user.address || {};
-  // 👇 tu front usa "state", no "province"
+  // front usa "state"
   if (
     !a.country?.trim() ||
     !a.state?.trim() ||
@@ -36,27 +34,46 @@ export function AuthProvider({ children }) {
 
   const requiresOnboarding = useMemo(() => needsOnboarding(user), [user]);
 
+  // --- helper: hidratar user tras auth (login/restore)
+  const hydrateUserAfterAuth = async (token, baseUser) => {
+    // Prioridad: /users/me (trae campos completos) y si falla, verifyToken
+    try {
+      const me = await getMyProfile(); // { ...userFull }
+      return { ...baseUser, ...me };
+    } catch {
+      try {
+        const vr = await verifyToken(token); // { user }
+        return { ...baseUser, ...(vr?.user || {}) };
+      } catch {
+        return baseUser;
+      }
+    }
+  };
+
   // 1) Login
   const login = async (credentials) => {
     const res = await loginUser(credentials); // { user, token }
     localStorage.setItem("token", res.token);
-    setUser(res.user);
 
-    // 🔗 unir a la room del usuario
+    // ⚠️ Algunos roles no traen avatarUrl en /login -> hidratamos
+    const hydrated = await hydrateUserAfterAuth(res.token, res.user || {});
+    setUser(hydrated);
+
+    // unir a la room del usuario
     try {
-      joinUserRoom(res.user.id || res.user._id);
+      joinUserRoom(hydrated.id || hydrated._id);
     } catch {}
 
-    if (needsOnboarding(res.user)) {
+    if (needsOnboarding(hydrated)) {
       navigate("/profile", { replace: true });
     }
-    return res.user;
+    return hydrated;
   };
 
   // 2) Logout
   const logout = () => {
     try {
-      leaveUserRoom(user?.id || user?._id); // 🔌 salir de la room si existe
+      leaveUserRoom(user?.id || user?._id);
     } catch {}
     setUser(null);
     localStorage.removeItem("token");
@@ -71,13 +88,20 @@ export function AuthProvider({ children }) {
         return;
       }
       try {
-        const res = await verifyToken(token); // { user }
-        setUser(res.user);
+        const vr = await verifyToken(token); // { user }
+        let u = vr?.user || null;
 
-        // 🔗 unir a la room del usuario (por si entró con sesión guardada)
-        joinUserRoom(res.user.id || res.user._id);
+        // Si por algún motivo viene incompleto (sin avatarUrl), hidratamos
+        if (!u?.avatarUrl || isEmpty(u.avatarUrl)) {
+          u = await hydrateUserAfterAuth(token, u || {});
+        }
 
-        if (needsOnboarding(res.user) && location.pathname !== "/profile") {
+        setUser(u);
+
+        // unir a la room (sesión restaurada)
+        joinUserRoom(u?.id || u?._id);
+
+        if (needsOnboarding(u) && location.pathname !== "/profile") {
           navigate("/profile", { replace: true });
         }
       } catch (e) {
@@ -91,7 +115,7 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 4) Reunirse a la room si el socket se reconecta (pérdida de red, HMR, etc.)
+  // 4) Si el socket se reconecta, volver a unirse a la room
   useEffect(() => {
     const onConnect = () => {
       const uid = user?.id || user?._id;

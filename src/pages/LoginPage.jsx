@@ -1,6 +1,6 @@
 // src/pages/LoginPage.jsx
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 function LoginPage() {
@@ -9,7 +9,7 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false); // 👈 nuevo estado para loader
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,20 +25,24 @@ function LoginPage() {
         professional: "/dashboard/professional",
       };
 
-      if (roleRoute[user.role]) navigate(roleRoute[user.role]);
-      else setError("Rol no reconocido");
+      if (roleRoute[user.role]) {
+        navigate(roleRoute[user.role]);
+      } else {
+        // fallback
+        navigate("/dashboard/user");
+      }
     } catch (err) {
       // Si el BE devolvió 403 por email no verificado
       if (
         err?.response?.status === 403 &&
-        err.response.data?.code === "EMAIL_NOT_VERIFIED"
+        err.response?.data?.code === "EMAIL_NOT_VERIFIED"
       ) {
         navigate(`/verify-email-sent?email=${encodeURIComponent(email)}`);
         return;
       }
       setError("Credenciales inválidas");
     } finally {
-      setLoading(false); // 👈 siempre desactiva el loader
+      setLoading(false); // siempre desactiva el loader
     }
   };
 
@@ -47,6 +51,7 @@ function LoginPage() {
       <h2 className="text-2xl font-bold mb-6 text-center text-gray-900">
         Iniciar sesión
       </h2>
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
           type="email"
@@ -55,7 +60,9 @@ function LoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           required
           className="w-full border px-4 py-2 rounded"
+          autoComplete="email"
         />
+
         <input
           type="password"
           placeholder="Contraseña"
@@ -63,8 +70,20 @@ function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
           className="w-full border px-4 py-2 rounded"
+          autoComplete="current-password"
         />
+
         {error && <p className="text-red-500 text-sm">{error}</p>}
+
+        <div className="flex items-center justify-between -mt-2">
+          <div />
+          <Link
+            to="/forgot-password"
+            className="text-sm text-indigo-600 hover:underline"
+          >
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </div>
 
         <button
           type="submit"
@@ -101,6 +120,14 @@ function LoginPage() {
           )}
         </button>
       </form>
+
+      {/* Opcional: Registro */}
+      {/* <p className="text-center text-sm text-gray-600 mt-4">
+        ¿No tenés cuenta?{" "}
+        <Link to="/register" className="text-indigo-600 hover:underline">
+          Crear cuenta
+        </Link>
+      </p> */}
     </div>
   );
 }

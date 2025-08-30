@@ -31,10 +31,16 @@ export const getAvailableNowProfessionals = async () => {
   return data;
 };
 
-export const getMyProfessional = async () => {
-  const { data } = await axiosUser.get(`${API}/professionals/me`);
+export async function getMyProfessional() {
+  const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+  const { data, status } = await axiosUser.get(`${API}/professionals/me`, {
+    validateStatus: (s) => (s >= 200 && s < 300) || s === 404,
+  });
+  // ⚠️ BE ahora puede devolver 200 { exists:false } (no pro) o 404 (según versión)
+  if (status === 404) return null;
+  if (data && data.exists === false) return null;
   return data;
-};
+}
 
 export const updateMyProfessional = async (payload) => {
   const { data } = await axiosUser.patch(`${API}/professionals/me`, payload);
@@ -60,4 +66,18 @@ export const updateMyLocation = async (lat, lng) => {
 export const setAvailabilityMode = async (mode) => {
   const { data } = await axiosUser.patch(`${API}/professionals/availability-mode`, { mode });
   return data; // { message, availabilityStrategy }
+};
+
+export const uploadProfessionalDoc = async (type, formData) => {
+  const { data } = await axiosUser.post(
+    `${API}/professionals/me/docs/${type}`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return data; // { documents }
+};
+
+export const getProfessionalDocsMeta = async (id) => {
+  const { data } = await axiosUser.get(`${API}/professionals/${id}/docs/meta`);
+  return data; // { criminalRecord, license }
 };
