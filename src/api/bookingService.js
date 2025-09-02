@@ -10,16 +10,48 @@ const dateTimeToISO = (date, time) => {
   return new Date(local.getTime() - local.getTimezoneOffset() * 60000).toISOString();
 };
 
-export const createBooking = async (payload) => {
-  // payload recibido del FE: { professionalId, serviceId, date, time, note }
-  const { date, time, ...rest } = payload;
-  const body = {
-    ...rest,
-    scheduledAt: dateTimeToISO(date, time),
-  };
-  const { data } = await axiosUser.post(`${API}/bookings`, body);
-  return data;
-};
+// Mapea errores del BE a mensajes de UX
+function friendlyBookingMessage(status, serverMsg = "", details = {}) {
+  const raw = (serverMsg || "").toLowerCase();
+
+  if (status === 409) {
+    return "Tenés una reserva pendiente con este profesional. Cancelala desde “Reservas” y volvé a intentarlo.";
+  }
+  if (status === 404) {
+    return "No encontramos el profesional o servicio. Actualizá la página e intentá nuevamente.";
+  }
+  if (status === 400) {
+    return serverMsg || "Los datos de la reserva no son válidos.";
+  }
+  if (status === 422) {
+    const fieldErr =
+      typeof details?.errors === "object"
+        ? Object.values(details.errors)[0]
+        : null;
+    return fieldErr || serverMsg || "Revisá los datos ingresados.";
+  }
+  if (status >= 500) {
+    return "Tuvimos un problema en el servidor. Intentá más tarde.";
+  }
+  return serverMsg || "No se pudo crear la reserva.";
+}
+
+export async function createBooking(payload) {
+  try {
+    const { data } = await axiosUser.post(`${API}/bookings`, payload);
+    return data;
+  } catch (err) {
+    const status = err?.response?.status ?? 0;
+    const body = err?.response?.data ?? {};
+    const serverMsg = body?.error || body?.message || "";
+    const userMsg = friendlyBookingMessage(status, serverMsg, body);
+
+    const e = new Error(userMsg);
+    e.status = status;
+    e.details = body;
+    throw e;
+  }
+}
 
 export const getMyBookings = async (params = {}) => {
   const { data } = await axiosUser.get(`${API}/bookings/mine`, { params });
@@ -31,7 +63,15 @@ export const getBookingsForMe = async (params = {}) => {
   return data;
 };
 
-export const updateBookingStatus = async (id, status) => {
-  const { data } = await axiosUser.patch(`${API}/bookings/${id}`, { status });
+// ⬇️ ahora acepta nota opcional sin romper llamadas existentes
+export const updateBookingStatus = async (id, status, extra = {}) => {
+  const body = { status };
+  if (extra && typeof extra.note === "string" && extra.note.trim()) {
+    body.note = extra.note.trim(); // el BE puede ignorarla si no la usa
+  }
+  const { data } = await axiosUser.patch(`${API}/bookings/${id}`, body);
   return data;
 };
+
+// Exporto por si lo querés usar en otros lados
+export { dateTimeToISO };

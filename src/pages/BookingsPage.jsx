@@ -9,6 +9,10 @@ import { socket } from "../lib/socket";
 import BackBar from "../components/layout/BackBar";
 import { useNavigate } from "react-router-dom";
 
+// ⬇️ NUEVO
+import { getReviewForBooking } from "../api/reviewsService";
+import ReviewModal from "../components/reviews/ReviewModal";
+
 export default function BookingsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -16,6 +20,11 @@ export default function BookingsPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
+
+  // ⬇️ NUEVO: mapa bookingId -> bool exists
+  const [reviewMap, setReviewMap] = useState({});
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState({ bookingId: "", professionalId: "" });
 
   const role = useMemo(() => {
     if (tab !== "auto") return tab;
@@ -28,7 +37,24 @@ export default function BookingsPage() {
     try {
       const params = status ? { status } : {};
       const data = role === "pro" ? await getBookingsForMe(params) : await getMyBookings(params);
-      setItems(Array.isArray(data) ? data : []);
+      const arr = Array.isArray(data) ? data : [];
+      setItems(arr);
+
+      // ⬇️ NUEVO: para el cliente, cargar existencia de reseña en bookings completadas
+      if (role !== "pro") {
+        const completed = arr.filter((b) => b?.status === "completed");
+        const entries = await Promise.all(
+          completed.map(async (b) => {
+            try {
+              const r = await getReviewForBooking(b._id);
+              return [b._id, !!r?.exists];
+            } catch {
+              return [b._id, false];
+            }
+          })
+        );
+        setReviewMap(Object.fromEntries(entries));
+      }
     } finally {
       setLoading(false);
     }
@@ -52,7 +78,6 @@ export default function BookingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Acciones (se renderizan en BackBar solo en >= md)
   const DesktopActions = (
     <div className="hidden md:flex items-center gap-2">
       <select
@@ -68,16 +93,6 @@ export default function BookingsPage() {
         <option value="completed">Completada</option>
         <option value="canceled">Cancelada</option>
       </select>
-      {/* <select
-        value={tab}
-        onChange={(e) => setTab(e.target.value)}
-        className="px-3 py-2 rounded border bg-white text-[#0a0e17] min-w-[140px]"
-        title="Vista"
-      >
-        <option value="auto">Auto</option>
-        <option value="client">Cliente</option>
-        <option value="pro">Profesional</option>
-      </select> */}
       <button onClick={fetchData} className="px-3 py-2 rounded bg-slate-800 text-white hover:bg-black">
         Refrescar
       </button>
@@ -87,15 +102,8 @@ export default function BookingsPage() {
   return (
     <>
       <Navbar />
+      <BackBar title="📅 Reservas" subtitle="Gestioná tus reservas en tiempo real." right={DesktopActions} />
 
-      {/* BackBar coherente en mobile/desktop (no se superpone) */}
-      <BackBar
-        title="📅 Reservas"
-        subtitle="Gestioná tus reservas en tiempo real."
-        right={DesktopActions}
-      />
-
-      {/* Toolbar MOBILE debajo del BackBar (evita desfasaje) */}
       <div className="md:hidden sticky top-[calc(theme(spacing.14)+theme(height.12))] z-[9] bg-white/95 backdrop-blur border-b">
         <div className="max-w-5xl mx-auto px-4 py-2 flex flex-wrap gap-2">
           <select
@@ -121,16 +129,12 @@ export default function BookingsPage() {
             <option value="client">Cliente</option>
             <option value="pro">Profesional</option>
           </select>
-          <button
-            onClick={fetchData}
-            className="w-full px-3 py-2 rounded bg-slate-800 text-white hover:bg-black"
-          >
+          <button onClick={fetchData} className="w-full px-3 py-2 rounded bg-slate-800 text-white hover:bg-black">
             Refrescar
           </button>
         </div>
       </div>
 
-      {/* Contenido */}
       <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-16 px-4">
         <div className="max-w-5xl mx-auto">
           {loading ? (
@@ -144,19 +148,66 @@ export default function BookingsPage() {
                   role === "pro"
                     ? (bk?.client?._id || bk?.client?.user?._id)
                     : (bk?.professional?.user?._id);
+
+                // ⬇️ NUEVO: CTA reseña (cliente, completada, sin reseña previa)
+                const canReview =
+                  role !== "pro" &&
+                  bk?.status === "completed" &&
+                  reviewMap[bk._id] !== true;
+
+                const reviewButton = canReview ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation(); // ⬅️ evita que el card abra el chat
+                      setReviewTarget({ bookingId: bk._id, professionalId: bk?.professional?._id });
+                      setReviewOpen(true);
+                    }}
+                    className="text-xs px-3 py-1.5 rounded-md bg-amber-500 text-white hover:bg-amber-600"
+                    title="Dejar reseña"
+                  >
+                    Dejar reseña
+                  </button>
+                ) : null;
+
                 return (
-                <BookingCard
-                  key={bk._id}
-                  booking={bk}
-                  role={role}
-                  rightSlot={<BookingActions booking={bk} role={role} onChanged={fetchData} />}
-                  onOpenChat={peerId ? () => navigate(`/chats/${peerId}`) : undefined}
-                />
-              )})}
+                  <BookingCard
+                    key={bk._id}
+                    booking={bk}
+                    role={role}
+                    rightSlot={
+                      <div
+                        className="flex items-center gap-2"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      >
+                        {reviewButton}
+                        <BookingActions booking={bk} role={role} onChanged={fetchData} />
+                      </div>
+                    }
+                    onOpenChat={peerId ? () => navigate(`/chats/${peerId}`) : undefined}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
       </section>
+
+      {/* Modal reseña */}
+      <ReviewModal
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        professionalId={reviewTarget.professionalId}
+        bookingId={reviewTarget.bookingId}
+        onSaved={() => {
+          setReviewMap((m) => ({ ...m, [reviewTarget.bookingId]: true }));
+          // refrescamos para actualizar contadores si hace falta
+          fetchData();
+        }}
+      />
     </>
   );
 }

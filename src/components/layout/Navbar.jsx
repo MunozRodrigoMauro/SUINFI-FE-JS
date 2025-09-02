@@ -18,10 +18,6 @@ function Navbar() {
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [availMsg, setAvailMsg] = useState("");
 
-  console.log('NAV user completo:', user);
-  console.log('NAV avatarUrl:', user?.avatarUrl);
-  console.log('NAV updatedAt:', user?.updatedAt);
-
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", onScroll);
@@ -141,14 +137,6 @@ function Navbar() {
   const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
   const absUrl = (u) =>
     !u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`;
-
-  console.log("NAV avatar:", {
-    avatarUrlRaw: user?.avatarUrl,
-    avatarVersion,
-    role: user?.role,
-    path: location.pathname,
-  });
-  
 
   // ⚡️ cache-busting estable por contexto (independiente del BE)
   const cacheKey = avatarVersion || 0;

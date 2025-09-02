@@ -6,6 +6,7 @@ import ChatPreviewCard from "../components/chat/ChatPreviewCard";
 import { getProfessionals, getAvailableNowProfessionals } from "../api/professionalService";
 import { getMyBookings } from "../api/bookingService";
 import BookingStatusBadge from "../components/booking/BookingStatusBadge";
+import BookingActions from "../components/booking/BookingActions";
 import { formatDateTime } from "../utils/datetime";
 import axiosUser from "../api/axiosUser";
 import { socket } from "../lib/socket";
@@ -655,7 +656,7 @@ function UserDashboard() {
                         <p className="text-xs text-gray-600 line-clamp-1">{email}</p>
                       </div>
                       <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                        ⭐ 4.8
+                        ⭐ {(p?.averageRating || 0).toFixed(1)}{typeof p?.reviews === "number" ? ` (${p.reviews})` : ""}
                       </div>
                     </div>
 
@@ -812,9 +813,18 @@ function UserDashboard() {
                           <div className="text-sm text-gray-700">{b?.service?.name || "Servicio"}</div>
                           <div className="text-sm text-gray-600">{formatDateTime(b?.scheduledAt)}</div>
                         </div>
-                      </div>
-                      <BookingStatusBadge status={b?.status} />
-                    </div>
+                        </div>
+                        <div     className="flex items-center gap-2"
+                          onClick={(e) => {
+                            // ⬅️ MUY IMPORTANTE: evita que abrir/cerrar modal dispare el onClick del card (chat)
+                            e.stopPropagation();
+                          }}
+                        >
+                          <BookingStatusBadge status={b?.status} />
+                          {/* Acciones para el cliente: cancelar si aplica */}
+                          <BookingActions booking={b} role="client" onChanged={fetchRecent} />
+                        </div>
+                      </div>  
                     {b?.note && (
                       <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
                         {b.note}

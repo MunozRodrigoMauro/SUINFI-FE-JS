@@ -1,22 +1,24 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { updateBookingStatus } from "../../api/bookingService";
 import { canClientCancel, canProComplete } from "../../utils/datetime";
- 
+import CancelBookingModal from "./cancelBookingModal";
+
 /**
  * Acciones según rol:
  * - role="pro": accepted | rejected | completed
- * - role="client": canceled
+ * - role="client": canceled (con nota opcional)
  */
 export default function BookingActions({ booking, role = "client", onChanged }) {
   const [busy, setBusy] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const triggerRef = useRef(null);
 
-  const doSet = async (status) => {
+  const doSet = async (status, extra = {}) => {
     try {
       setBusy(true);
-      await updateBookingStatus(booking._id, status);
+      await updateBookingStatus(booking._id, status, extra);
       onChanged?.(status);
     } catch (e) {
-      // podrías mostrar toast
       console.error(e);
     } finally {
       setBusy(false);
@@ -59,16 +61,28 @@ export default function BookingActions({ booking, role = "client", onChanged }) 
 
   // role client
   return (
-    <div className="flex gap-2">
-      {canClientCancel(booking.status) && (
-        <button
-          onClick={() => doSet("canceled")}
-          disabled={busy}
-          className="px-3 py-1 rounded bg-gray-800 text-white hover:bg-black disabled:opacity-60"
-        >
-          Cancelar
-        </button>
-      )}
-    </div>
+    <>
+      <div className="flex gap-2">
+        {canClientCancel(booking.status) && (
+          <button
+            ref={triggerRef}
+            onClick={() => setCancelOpen(true)}
+            disabled={busy}
+            className="px-3 py-1 rounded bg-gray-800 text-white hover:bg-black disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+        )}
+      </div>
+
+      <CancelBookingModal
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        returnFocusRef={triggerRef}
+        onConfirm={(note) => doSet("canceled", note ? { note } : {})}
+        title="Cancelar reserva"
+        subtitle="Podés agregar un breve motivo (se verá en la reserva)."
+      />
+    </>
   );
 }

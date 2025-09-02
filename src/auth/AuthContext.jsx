@@ -12,7 +12,6 @@ function needsOnboarding(user) {
   if (!user || user.role !== "professional") return false;
   if (!user.name || String(user.name).trim().length < 2) return true;
   const a = user.address || {};
-  // front usa "state"
   if (
     !a.country?.trim() ||
     !a.state?.trim() ||
@@ -29,6 +28,9 @@ function needsOnboarding(user) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [avatarVersion, setAvatarVersion] = useState(0); // ⬅️ nuevo
+  const bumpAvatarVersion = () => setAvatarVersion((v) => v + 1); // ⬅️ nuevo
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -36,7 +38,6 @@ export function AuthProvider({ children }) {
 
   // --- helper: hidratar user tras auth (login/restore)
   const hydrateUserAfterAuth = async (token, baseUser) => {
-    // Prioridad: /users/me (trae campos completos) y si falla, verifyToken
     try {
       const me = await getMyProfile(); // { ...userFull }
       return { ...baseUser, ...me };
@@ -55,11 +56,9 @@ export function AuthProvider({ children }) {
     const res = await loginUser(credentials); // { user, token }
     localStorage.setItem("token", res.token);
 
-    // ⚠️ Algunos roles no traen avatarUrl en /login -> hidratamos
     const hydrated = await hydrateUserAfterAuth(res.token, res.user || {});
     setUser(hydrated);
 
-    // unir a la room del usuario
     try {
       joinUserRoom(hydrated.id || hydrated._id);
     } catch {}
@@ -91,14 +90,11 @@ export function AuthProvider({ children }) {
         const vr = await verifyToken(token); // { user }
         let u = vr?.user || null;
 
-        // Si por algún motivo viene incompleto (sin avatarUrl), hidratamos
         if (!u?.avatarUrl || isEmpty(u.avatarUrl)) {
           u = await hydrateUserAfterAuth(token, u || {});
         }
 
         setUser(u);
-
-        // unir a la room (sesión restaurada)
         joinUserRoom(u?.id || u?._id);
 
         if (needsOnboarding(u) && location.pathname !== "/profile") {
@@ -134,6 +130,9 @@ export function AuthProvider({ children }) {
     logout,
     loading,
     requiresOnboarding,
+    // ⬇️ nuevos, no rompen nada existente
+    avatarVersion,
+    bumpAvatarVersion,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

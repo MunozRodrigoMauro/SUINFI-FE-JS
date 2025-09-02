@@ -1,4 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// src/pages/ProfilePage.jsx
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
+  useCallback,
+} from "react";
+import ReactDOM from "react-dom";
+import ReactCountryFlag from "react-country-flag";
+
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
 import {
@@ -17,11 +28,18 @@ import {
   updateMyLocation,
   getMyProfessional,
   uploadProfessionalDoc,
+  deleteProfessionalDoc,
 } from "../api/professionalService";
+
+// WhatsApp
+import { updateMyWhatsapp, updateMyWhatsappPro } from "../api/whatsappService";
+import { parsePhoneNumberFromString } from "libphonenumber-js";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
 const MAP_KEY = import.meta.env.VITE_MAP_API_KEY;
+
+const log = (...a) => console.log("[WA]", ...a);
 
 const DAYS = [
   { key: "lunes", label: "Lunes" },
@@ -34,7 +52,9 @@ const DAYS = [
 ];
 
 const buildAddressLabel = (a) =>
-  [a.street && `${a.street} ${a.number}`, a.city, a.state, a.postalCode, a.country].filter(Boolean).join(", ");
+  [a.street && `${a.street} ${a.number}`, a.city, a.state, a.postalCode, a.country]
+    .filter(Boolean)
+    .join(", ");
 
 function absUrl(u) {
   if (!u) return "";
@@ -45,7 +65,11 @@ function absUrl(u) {
 
 function Chevron({ open }) {
   return (
-    <svg className={`h-5 w-5 transition-transform ${open ? "rotate-180" : "rotate-0"}`} viewBox="0 0 20 20" fill="currentColor">
+    <svg
+      className={`h-5 w-5 transition-transform ${open ? "rotate-180" : "rotate-0"}`}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+    >
       <path
         fillRule="evenodd"
         d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
@@ -55,9 +79,203 @@ function Chevron({ open }) {
   );
 }
 
+// ───────── WhatsApp: países
+const WA_COUNTRIES = [
+  { iso: "AR", name: "Argentina", dial: "+54" },
+  { iso: "UY", name: "Uruguay", dial: "+598" },
+  { iso: "CL", name: "Chile", dial: "+56" },
+  { iso: "BR", name: "Brasil", dial: "+55" },
+  { iso: "PY", name: "Paraguay", dial: "+595" },
+  { iso: "BO", name: "Bolivia", dial: "+591" },
+  { iso: "PE", name: "Perú", dial: "+51" },
+  { iso: "CO", name: "Colombia", dial: "+57" },
+  { iso: "EC", name: "Ecuador", dial: "+593" },
+  { iso: "VE", name: "Venezuela", dial: "+58" },
+  { iso: "MX", name: "México", dial: "+52" },
+  { iso: "US", name: "Estados Unidos", dial: "+1" },
+  { iso: "ES", name: "España", dial: "+34" },
+  { iso: "IT", name: "Italia", dial: "+39" },
+  { iso: "FR", name: "Francia", dial: "+33" },
+  { iso: "DE", name: "Alemania", dial: "+49" },
+  { iso: "GB", name: "Reino Unido", dial: "+44" },
+  { iso: "PT", name: "Portugal", dial: "+351" },
+  { iso: "CA", name: "Canadá", dial: "+1" },
+  { iso: "PR", name: "Puerto Rico", dial: "+1-787" },
+];
+
+const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
+
+// más tolerante
+const tryNormalizeWa = (iso, dial, local) => {
+  let digits = onlyDigits(local);
+  if (!digits) return "";
+  const dialDigits = onlyDigits(dial);
+  if (digits.startsWith(dialDigits)) digits = digits.slice(dialDigits.length);
+
+  if (iso === "AR") {
+    digits = digits.replace(/^0+/, "").replace(/^(\d{2,4})15/, "$1");
+    if (!digits.startsWith("9")) digits = "9" + digits;
+  }
+
+  const raw = `+${dialDigits}${digits}`;
+  try {
+    const p = parsePhoneNumberFromString(raw, iso);
+    return p && p.isValid() ? p.number : "";
+  } catch {
+    return "";
+  }
+};
+
+const findCountry = (iso) =>
+  WA_COUNTRIES.find((c) => c.iso === iso) || WA_COUNTRIES[0];
+
+function pickFromE164(e164) {
+  const num = onlyDigits(e164);
+  let best = WA_COUNTRIES[0],
+    bestLen = 0;
+  for (const c of WA_COUNTRIES) {
+    const d = onlyDigits(c.dial);
+    if (d && num.startsWith(d) && d.length > bestLen) {
+      best = c;
+      bestLen = d.length;
+    }
+  }
+  return { iso: best.iso, dial: best.dial, local: num.slice(bestLen) };
+}
+
+// ───────── Country dropdown (igual)
+function usePortal() {
+  const elRef = React.useRef(null);
+  if (!elRef.current) {
+    const el = document.createElement("div");
+    el.id = "wa-country-portal";
+    el.style.zIndex = "60";
+    elRef.current = el;
+  }
+  React.useEffect(() => {
+    const el = elRef.current;
+    document.body.appendChild(el);
+    return () => {
+      try {
+        document.body.removeChild(el);
+      } catch {}
+    };
+  }, []);
+  return elRef.current;
+}
+
+function CountryDropdown({ open, anchorRef, valueISO, onSelect, onClose }) {
+  const portalRoot = usePortal();
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 280 });
+  const [q, setQ] = useState("");
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+
+  useLayoutEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const place = useCallback(() => {
+    const a = anchorRef?.current;
+    if (!a) return;
+    const r = a.getBoundingClientRect();
+    setPos({ top: r.bottom + 8, left: r.left, width: Math.max(260, r.width) });
+  }, [anchorRef]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    place();
+    const onScroll = () => place();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e) => {
+      const a = anchorRef?.current;
+      if (!a) return;
+      if (!portalRoot.contains(e.target) && !a.contains(e.target)) onClose?.();
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open, onClose, portalRoot, anchorRef]);
+
+  const items = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return WA_COUNTRIES;
+    return WA_COUNTRIES.filter(
+      (c) =>
+        c.name.toLowerCase().includes(qq) ||
+        c.iso.toLowerCase().includes(qq) ||
+        c.dial.replace(/\D/g, "").includes(qq.replace(/\D/g, ""))
+    );
+  }, [q]);
+
+  if (!open || !portalRoot) return null;
+
+  return ReactDOM.createPortal(
+    <div
+      className="fixed bg-white border shadow-xl rounded-xl overflow-hidden"
+      style={{
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        maxHeight: "360px",
+        zIndex: 60,
+      }}
+      role="dialog"
+      aria-label="Elegir país"
+    >
+      <div className="p-2 border-b">
+        <input
+          autoFocus
+          className="w-full border rounded-lg px-3 py-2"
+          placeholder="Buscar país por código…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+      <div className="max-h-[300px] overflow-y-auto">
+        {items.map((c) => (
+          <button
+            key={c.iso}
+            onClick={() => {
+              onSelect?.(c.iso);
+              onClose?.();
+            }}
+            className={`w-full flex items-center justify-between gap-3 px-3 py-2 hover:bg-gray-50 ${
+              valueISO === c.iso ? "bg-gray-50" : ""
+            }`}
+          >
+            <span className="inline-flex items-center gap-2">
+              <ReactCountryFlag
+                svg
+                countryCode={c.iso}
+                style={{ width: "1.1rem", height: "1.1rem" }}
+              />
+              <span className="text-sm">{c.name}</span>
+            </span>
+            <span className="text-xs text-gray-600">{c.dial}</span>
+          </button>
+        ))}
+      </div>
+    </div>,
+    portalRoot
+  );
+}
+
+// ───────── Map + geocode helpers
 async function geocode(q) {
   if (!q?.trim()) return [];
-  const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${MAP_KEY}&language=es`;
+  const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(
+    q
+  )}.json?key=${MAP_KEY}&language=es`;
   const res = await fetch(url);
   const data = await res.json();
   return (data?.features || []).map((f) => ({
@@ -69,20 +287,33 @@ async function geocode(q) {
 }
 
 async function reverseGeocode(lat, lng) {
-  const url = `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
-  const res = await fetch(url);
+  const u = `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
+  const res = await fetch(u);
   const data = await res.json();
   const f = (data?.features || [])[0];
   return f ? f.place_name || f.text : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
+// ── wrappers FE → BE
+const patchUserWhatsapp = ({ number, visible, nationality }) =>
+  updateMyWhatsapp({ number, visible, nationality });
+
+const patchProWhatsapp = ({ number, visible, nationality }) =>
+  updateMyWhatsappPro({ number, visible, nationality });
+
 export default function ProfilePage() {
-  const { user, setUser, bumpAvatarVersion } = useAuth();
+  const { setUser, bumpAvatarVersion } = useAuth();
   const navigate = useNavigate();
 
   const [hasProfessional, setHasProfessional] = useState(false);
 
-  const [form, setForm] = useState({ name: "", email: "", role: "", password: "", avatarUrl: "" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    role: "",
+    password: "",
+    avatarUrl: "",
+  });
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [msg, setMsg] = useState("");
@@ -115,7 +346,9 @@ export default function ProfilePage() {
   const [coords, setCoords] = useState(null);
   const [label, setLabel] = useState("");
 
-  const [rows, setRows] = useState(() => DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })));
+  const [rows, setRows] = useState(() =>
+    DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" }))
+  );
   const [loadingAgenda, setLoadingAgenda] = useState(true);
   const [savingAgenda, setSavingAgenda] = useState(false);
   const [agendaMsg, setAgendaMsg] = useState("");
@@ -130,10 +363,45 @@ export default function ProfilePage() {
     license: null,
   }));
 
+  // WhatsApp UI state
+  const [waISO, setWaISO] = useState("AR");
+  const [waNumber, setWaNumber] = useState("");
+  const [waVisible, setWaVisible] = useState(false);
+  const [waLoading, setWaLoading] = useState(true);
+  const [waOpen, setWaOpen] = useState(false);
+  const waAnchorRef = useRef(null);
+  const [waErr, setWaErr] = useState("");
+
+  const waCountry = useMemo(() => findCountry(waISO), [waISO]);
+
+  const refreshDocs = async () => {
+    try {
+      const mine = await getMyProfessional();
+      if (mine?.documents) {
+        const cr = mine.documents.criminalRecord || null;
+        const lic = mine.documents.license || null;
+        setDocuments({
+          criminalRecord: cr ? { ...cr, url: absUrl(cr.url) } : null,
+          license: lic ? { ...lic, url: absUrl(lic.url) } : null,
+        });
+        setDocCrExpiresAt(
+          cr?.expiresAt ? new Date(cr.expiresAt).toISOString().slice(0, 10) : ""
+        );
+      }
+    } catch (e) {
+      console.error("refreshDocs error", e);
+    }
+  };
+
+  // ─── Carga inicial con buffer para evitar carrera
   useEffect(() => {
+    let meWa = null; // buffer del WhatsApp del USER
+
+    // USER
     (async () => {
       try {
         const me = await getMyProfile();
+        log("GET /users/me → whatsapp:", me?.whatsapp);
         setForm({
           name: me.name || "",
           email: me.email || "",
@@ -155,13 +423,17 @@ export default function ProfilePage() {
         const loc = me?.address?.location;
         if (loc?.lat != null && loc?.lng != null) {
           setCoords({ lat: loc.lat, lng: loc.lng });
-          const lbl = me?.address?.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+          const lbl =
+            me?.address?.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
           setLabel(lbl);
           setQuery(lbl);
         } else {
           const line = buildAddressLabel(me?.address || {});
           if (line) setQuery(line);
         }
+
+        // guardar, NO setear
+        meWa = me?.whatsapp || null;
       } catch {
         setMsgType("error");
         setMsg("No se pudo cargar tu perfil.");
@@ -170,35 +442,68 @@ export default function ProfilePage() {
       }
     })();
 
+    // PROFESSIONAL
     (async () => {
       try {
         const mine = await getMyProfessional();
-        const exists = !!mine?._id;
-        setHasProfessional(exists);
+        log("GET /professionals/me → whatsapp:", mine?.whatsapp);
+        setHasProfessional(!!(mine && (mine._id || mine.exists)));
 
+        // Agenda
         if (mine?.availabilitySchedule) {
-          const map = mine.availabilitySchedule;
+          const map =
+            mine.availabilitySchedule instanceof Map
+              ? Object.fromEntries(mine.availabilitySchedule)
+              : mine.availabilitySchedule;
+
           setRows((prev) =>
             prev.map((r) => {
               const v = map[r.key];
               if (!v) return { ...r, active: false };
-              return { ...r, active: true, from: v.from || "09:00", to: v.to || "18:00" };
+              return {
+                ...r,
+                active: true,
+                from: v.from || "09:00",
+                to: v.to || "18:00",
+              };
             })
           );
         }
 
+        // Docs
         if (mine?.documents) {
           const cr = mine.documents.criminalRecord || null;
           const lic = mine.documents.license || null;
           const crAbs = cr ? { ...cr, url: absUrl(cr.url) } : null;
           const licAbs = lic ? { ...lic, url: absUrl(lic.url) } : null;
           setDocuments({ criminalRecord: crAbs, license: licAbs });
-          setDocCrExpiresAt(cr?.expiresAt ? new Date(cr.expiresAt).toISOString().slice(0, 10) : "");
+          setDocCrExpiresAt(
+            cr?.expiresAt ? new Date(cr.expiresAt).toISOString().slice(0, 10) : ""
+          );
+        }
+
+        // WhatsApp: prioridad PRO; si no, USER (buffer)
+        if (
+          mine?.whatsapp &&
+          (mine.whatsapp.number || mine.whatsapp.visible !== undefined)
+        ) {
+          const picked = pickFromE164(mine.whatsapp.number || "");
+          log("INIT set from PRO:", { picked, visible: !!mine.whatsapp.visible });
+          setWaISO(picked.iso);
+          setWaNumber(picked.local);
+          setWaVisible(!!mine.whatsapp.visible);
+        } else if (meWa) {
+          const picked = pickFromE164(meWa.number || "");
+          log("INIT set from USER:", { picked, visible: !!meWa.visible });
+          setWaISO(picked.iso);
+          setWaNumber(picked.local);
+          setWaVisible(!!meWa.visible);
         }
       } catch {
         setHasProfessional(false);
       } finally {
         setLoadingAgenda(false);
+        setWaLoading(false);
       }
     })();
   }, []);
@@ -208,13 +513,11 @@ export default function ProfilePage() {
     const t = setTimeout(() => setMsg(""), 2500);
     return () => clearTimeout(t);
   }, [msg]);
-
   useEffect(() => {
     if (!agendaMsg) return;
     const t = setTimeout(() => setAgendaMsg(""), 2500);
     return () => clearTimeout(t);
   }, [agendaMsg]);
-
   useEffect(() => {
     if (!docsMsg) return;
     const t = setTimeout(() => setDocsMsg(""), 2500);
@@ -250,8 +553,10 @@ export default function ProfilePage() {
     setAllowSuggests(false);
   };
 
-  const onChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
-  const onChangeAddr = (e) => setAddr((a) => ({ ...a, [e.target.name]: e.target.value }));
+  const onChange = (e) =>
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const onChangeAddr = (e) =>
+    setAddr((a) => ({ ...a, [e.target.name]: e.target.value }));
 
   const useGPS = () => {
     if (!navigator.geolocation) return;
@@ -269,8 +574,28 @@ export default function ProfilePage() {
     );
   };
 
-  // Guardado + sync User + (si existe) Professional
+  // ✅ essentialsOk — (esto faltaba y rompía el render)
+  const essentialsOk = useMemo(() => {
+    const nameOk = form.name.trim().length >= 2;
+    const addrOk =
+      addr.country &&
+      addr.state &&
+      addr.city &&
+      addr.street &&
+      addr.number &&
+      addr.postalCode;
+    return Boolean(nameOk && addrOk);
+  }, [form.name, addr]);
+
+  // Guardado
   const saveCommon = async () => {
+    log("saveCommon() start", {
+      hasProfessional,
+      waISO,
+      waNumber,
+      waVisible,
+    });
+
     let newAvatarUrl = form.avatarUrl || "";
     let updatedAtFromUpload = null;
 
@@ -278,16 +603,19 @@ export default function ProfilePage() {
       try {
         const fd = new FormData();
         fd.append("file", avatarFile);
-        const r = await uploadMyAvatar(fd); // { url, user }
+        const r = await uploadMyAvatar(fd);
         const uploaded = r?.url || r?.user?.avatarUrl || "";
         if (uploaded) {
           newAvatarUrl = uploaded;
           setAvatarPreview(absUrl(uploaded));
-
-          const nextUpdatedAt = r?.user?.updatedAt || new Date().toISOString();
+          const nextUpdatedAt =
+            r?.user?.updatedAt || new Date().toISOString();
           updatedAtFromUpload = nextUpdatedAt;
-          setUser((prev) => ({ ...prev, avatarUrl: uploaded, updatedAt: nextUpdatedAt }));
-          // ⬅️ forzar recarga de avatar en Navbar (todas las vistas)
+          setUser((prev) => ({
+            ...prev,
+            avatarUrl: uploaded,
+            updatedAt: nextUpdatedAt,
+          }));
           bumpAvatarVersion();
         }
       } catch (e) {
@@ -298,6 +626,29 @@ export default function ProfilePage() {
       }
     }
 
+    // --- Normalizar WhatsApp (pero NO parcheamos todavía)
+    let e164 = "";
+    const localDigits = onlyDigits(waNumber);
+
+    if (localDigits.length > 0 || waVisible) {
+      e164 = tryNormalizeWa(waISO, waCountry.dial, waNumber);
+      log("normalize", {
+        iso: waISO,
+        dial: waCountry.dial,
+        input: waNumber,
+        e164,
+        localDigits,
+      });
+      if (!e164 && localDigits.length > 0) {
+        setWaErr(
+          `El número no es válido para ${waCountry.name}. Revisá el código de área / celular.`
+        );
+        return;
+      }
+    }
+    if (localDigits.length === 0) e164 = ""; // limpiar
+
+    // --- 1) Guardar datos de USER
     const clean = {
       country: addr.country.trim(),
       state: addr.state.trim(),
@@ -310,24 +661,28 @@ export default function ProfilePage() {
 
     const payload = {
       name: form.name.trim() || undefined,
-      password: form.password.trim() || undefined,
+      password: form.password?.trim() ? form.password.trim() : undefined,
       ...(newAvatarUrl ? { avatarUrl: newAvatarUrl } : {}),
       address: {
         ...clean,
         ...(coords
-          ? { label: label || buildAddressLabel(clean), location: { lat: coords.lat, lng: coords.lng } }
+          ? {
+              label: label || buildAddressLabel(clean),
+              location: { lat: coords.lat, lng: coords.lng },
+            }
           : {}),
       },
     };
 
-    const res = await updateMyProfile(payload);
-    const updated = res?.user || res;
+    const resUser = await updateMyProfile(payload);
+    const updated = resUser?.user || resUser;
     setUser((p) => ({
       ...p,
       ...updated,
       ...(updatedAtFromUpload ? { updatedAt: updatedAtFromUpload } : {}),
     }));
 
+    // --- 2) Si es PRO, sincronizar address/location
     if (hasProfessional) {
       try {
         await updateMyProfessional({
@@ -337,17 +692,61 @@ export default function ProfilePage() {
             ...(coords ? { location: { lat: coords.lat, lng: coords.lng } } : {}),
           },
         });
-        if (coords) {
-          await updateMyLocation(coords.lat, coords.lng);
-        }
+        if (coords) await updateMyLocation(coords.lat, coords.lng);
       } catch (e) {
         console.error("sync Professional addr/loc error", e);
       }
     }
 
+    // --- 3) AHORA SÍ: PATCH WhatsApp al FINAL
+    let waOk = true;
+    try {
+      if (hasProfessional) {
+        log("PATCH /api/whatsapp/pro payload →", {
+          nationality: waISO,
+          whatsapp: { number: e164, visible: waVisible },
+        });
+        await patchProWhatsapp({
+          number: e164,
+          visible: waVisible,
+          nationality: waISO,
+        });
+        const readback = await getMyProfessional();
+        log("READBACK /professionals/me ←", readback?.whatsapp);
+      } else {
+        log("PATCH /api/whatsapp/me payload →", {
+          number: e164,
+          visible: waVisible,
+          nationality: waISO,
+        });
+        await patchUserWhatsapp({
+          number: e164,
+          visible: waVisible,
+          nationality: waISO,
+        });
+        const rb = await getMyProfile();
+        log("READBACK /users/me ←", rb?.whatsapp);
+      }
+    } catch (e) {
+      waOk = false;
+      const apiMsg = e?.response?.data?.message;
+      if (apiMsg === "INVALID_WHATSAPP_NUMBER") {
+        setWaErr(
+          `El número no es válido para ${waCountry.name}. Probá quitando ceros iniciales o revisando el área.`
+        );
+      } else {
+        setWaErr("No pudimos guardar tu WhatsApp ahora. Intentá de nuevo.");
+      }
+      console.error("patch whatsapp error", e?.response?.data || e);
+    }
+
     setAvatarFile(null);
-    setMsgType("success");
-    setMsg("✅ Cambios guardados");
+    setMsgType(waOk ? "success" : "error");
+    setMsg(
+      waOk
+        ? "✅ Cambios guardados"
+        : "Se guardaron tus datos, pero el WhatsApp no se actualizó."
+    );
   };
 
   const invalids = useMemo(() => {
@@ -381,77 +780,58 @@ export default function ProfilePage() {
     }
   };
 
-  const essentialsOk = useMemo(() => {
-    const nameOk = form.name.trim().length >= 2;
-    const addrOk =
-      addr.country && addr.state && addr.city && addr.street && addr.number && addr.postalCode;
-    return Boolean(nameOk && addrOk);
-  }, [form.name, addr]);
-
   const crExpired = useMemo(() => {
     const ex = documents?.criminalRecord?.expiresAt;
     return ex ? new Date(ex).getTime() < Date.now() : false;
   }, [documents?.criminalRecord?.expiresAt]);
 
-  const saveDocuments = async ({ which }) => {
-    if (!hasProfessional) return;
-    setSavingDocs(true);
-    setDocsMsg("");
+  const autoUpload = async ({ which, file }) => {
+    if (!hasProfessional || !file) return;
     try {
-      if (which === "cr") {
-        if (!docCrFile) {
-          setDocsMsg("Para actualizar el vencimiento, por ahora subí un PDF nuevo.");
-        } else {
-          const fd = new FormData();
-          fd.append("file", docCrFile);
-          if (docCrExpiresAt) fd.append("expiresAt", docCrExpiresAt);
-          const r = await uploadProfessionalDoc("criminal-record", fd);
-          const docs = r?.documents || {};
-          setDocuments({
-            criminalRecord: docs.criminalRecord ? { ...docs.criminalRecord, url: absUrl(docs.criminalRecord.url) } : null,
-            license: docs.license ? { ...docs.license, url: absUrl(docs.license.url) } : documents.license,
-          });
-          setDocCrFile(null);
-          setDocsMsg("✅ Antecedentes subidos.");
-        }
-      }
-      if (which === "lic") {
-        if (!docLicFile) {
-          setDocsMsg("Seleccioná un PDF para subir la matrícula.");
-        } else {
-          const fd = new FormData();
-          fd.append("file", docLicFile);
-          const r = await uploadProfessionalDoc("license", fd);
-          const docs = r?.documents || {};
-          setDocuments({
-            criminalRecord: docs.criminalRecord ? { ...docs.criminalRecord, url: absUrl(docs.criminalRecord.url) } : documents.criminalRecord,
-            license: docs.license ? { ...docs.license, url: absUrl(docs.license.url) } : null,
-          });
-          setDocLicFile(null);
-          setDocsMsg("✅ Matrícula subida.");
-        }
-      }
+      setSavingDocs(true);
+      setDocsMsg(
+        which === "cr" ? "Subiendo certificado…" : "Subiendo matrícula…"
+      );
+      const fd = new FormData();
+      fd.append("file", file);
+      if (which === "cr" && docCrExpiresAt) fd.append("expiresAt", docCrExpiresAt);
+      const type = which === "cr" ? "criminal-record" : "license";
+      const r = await uploadProfessionalDoc(type, fd);
+      const docs = r?.documents || {};
+      setDocuments({
+        criminalRecord: docs.criminalRecord
+          ? { ...docs.criminalRecord, url: absUrl(docs.criminalRecord.url) }
+          : null,
+        license: docs.license
+          ? { ...docs.license, url: absUrl(docs.license.url) }
+          : null,
+      });
+      if (which === "cr") setDocCrFile(null);
+      if (which === "lic") setDocLicFile(null);
+      await refreshDocs();
+      setDocsMsg(
+        which === "cr" ? "✅ Antecedentes subidos." : "✅ Matrícula subida."
+      );
     } catch (e) {
       console.error(e);
-      setDocsMsg("No se pudieron actualizar los documentos.");
+      setDocsMsg("No se pudo subir el archivo.");
     } finally {
       setSavingDocs(false);
     }
   };
 
-  const removeDocument = async (_which) => {
-    setDocsMsg("Por ahora no es posible eliminar documentos desde la app.");
-  };
-
-  // ⬇️ borrar avatar en servidor + bust inmediato
   const handleDeleteAvatar = async () => {
     try {
       const { user: updated } = await deleteMyAvatar();
       setAvatarPreview("");
       setAvatarFile(null);
       setForm((f) => ({ ...f, avatarUrl: "" }));
-      setUser((prev) => ({ ...prev, ...updated, updatedAt: updated?.updatedAt || new Date().toISOString() }));
-      bumpAvatarVersion(); // ⬅️ fuerza recarga en Navbar
+      setUser((prev) => ({
+        ...prev,
+        ...updated,
+        updatedAt: updated?.updatedAt || new Date().toISOString(),
+      }));
+      bumpAvatarVersion();
       setMsgType("success");
       setMsg("✅ Foto eliminada");
     } catch {
@@ -460,8 +840,8 @@ export default function ProfilePage() {
     }
   };
 
-  if (loadingProfile) return <p className="text-center mt-28">Cargando tu perfil...</p>;
-
+  if (loadingProfile)
+    return <p className="text-center mt-28">Cargando tu perfil...</p>;
   const headerInitial = (form.name?.[0] || "U").toUpperCase();
 
   return (
@@ -469,16 +849,24 @@ export default function ProfilePage() {
       <Navbar />
       <BackBar
         title="Mi perfil"
-        subtitle={hasProfessional ? "Editá tu cuenta, foto, ubicación, documentos y disponibilidad" : "Editá tu cuenta, foto y ubicación"}
+        subtitle={
+          hasProfessional
+            ? "Editá tu cuenta, foto, ubicación, documentos y disponibilidad"
+            : "Editá tu cuenta, foto y ubicación"
+        }
       />
 
       <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-24 px-4">
         <div className="max-w-3xl mx-auto">
-          {/* Encabezado con AVATAR */}
+          {/* Encabezado */}
           <div className="flex items-center gap-3 mb-4">
             <div className="h-12 w-12 rounded-full overflow-hidden bg-gray-200 grid place-items-center text-gray-700 font-bold ring-2 ring-white shadow">
               {avatarPreview ? (
-                <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
+                <img
+                  src={avatarPreview}
+                  alt="Avatar"
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 headerInitial
               )}
@@ -516,11 +904,17 @@ export default function ProfilePage() {
                 <div className="space-y-5">
                   {/* Foto de perfil */}
                   <div>
-                    <label className="block text-sm font-medium mb-2">Foto de perfil</label>
+                    <label className="block text-sm font-medium mb-2">
+                      Foto de perfil
+                    </label>
                     <div className="flex items-center gap-4">
                       <div className="relative">
                         {avatarPreview ? (
-                          <img src={avatarPreview} alt="Preview" className="h-20 w-20 rounded-full object-cover ring-2 ring-gray-200" />
+                          <img
+                            src={avatarPreview}
+                            alt="Preview"
+                            className="h-20 w-20 rounded-full object-cover ring-2 ring-gray-200"
+                          />
                         ) : (
                           <div className="h-20 w-20 rounded-full bg-gray-200 grid place-items-center text-gray-600">
                             IMG
@@ -540,7 +934,9 @@ export default function ProfilePage() {
                                 const url = URL.createObjectURL(f);
                                 setAvatarPreview(url);
                                 setMsgType("success");
-                                setMsg("Nueva foto seleccionada. No olvides “Guardar cambios”.");
+                                setMsg(
+                                  "Nueva foto seleccionada. No olvides “Guardar cambios”."
+                                );
                               }
                             }}
                           />
@@ -556,14 +952,20 @@ export default function ProfilePage() {
                             Quitar foto actual
                           </button>
                         )}
-                        {avatarFile && <span className="text-xs text-gray-600">{avatarFile.name} — listo para subir.</span>}
+                        {avatarFile && (
+                          <span className="text-xs text-gray-600">
+                            {avatarFile.name} — listo para subir.
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Nombre / email / rol */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">Nombre</label>
+                    <label className="block text-sm font-medium mb-1">
+                      Nombre
+                    </label>
                     <input
                       name="name"
                       value={form.name}
@@ -575,7 +977,9 @@ export default function ProfilePage() {
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Email</label>
+                      <label className="block text-sm font-medium mb-1">
+                        Email
+                      </label>
                       <input
                         value={form.email}
                         disabled
@@ -583,12 +987,133 @@ export default function ProfilePage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Rol</label>
+                      <label className="block text-sm font-medium mb-1">
+                        Rol
+                      </label>
                       <input
                         value={form.role}
                         disabled
                         className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600 capitalize"
                       />
+                    </div>
+                  </div>
+
+                  {/* ───────────────── WhatsApp ──────────────── */}
+                  <div className="border rounded-xl p-4">
+                    <div className="font-semibold mb-1">Compartir WhatsApp</div>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Mostrá un botón de WhatsApp en tu perfil y al reservar. Elegí el país con la
+                      banderita y escribí el resto del número.
+                    </p>
+
+                    <div className="grid md:grid-cols-[240px_minmax(0,1fr)] gap-3">
+                      {/* selector de país */}
+                      <div className="relative">
+                        <label className="block text-xs text-gray-500 mb-1">
+                          País
+                        </label>
+                        <button
+                          ref={waAnchorRef}
+                          type="button"
+                          onClick={() => setWaOpen((o) => !o)}
+                          className="w-full h-10 px-3 rounded-lg border bg-white flex items-center justify-between cursor-pointer"
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <ReactCountryFlag
+                              svg
+                              countryCode={waCountry.iso}
+                              style={{ width: "1.1rem", height: "1.1rem" }}
+                            />
+                            <span className="text-sm">{waCountry.iso}</span>
+                            <span className="text-xs text-gray-500">
+                              {waCountry.dial}
+                            </span>
+                          </span>
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 20 20"
+                            className="text-gray-500"
+                          >
+                            <path fill="currentColor" d="M5 7l5 5 5-5z" />
+                          </svg>
+                        </button>
+
+                        <CountryDropdown
+                          open={waOpen}
+                          anchorRef={waAnchorRef}
+                          valueISO={waISO}
+                          onSelect={(iso) => setWaISO(iso)}
+                          onClose={() => setWaOpen(false)}
+                        />
+                      </div>
+
+                      {/* número sin prefijo */}
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">
+                          Número{" "}
+                          <span className="text-gray-400">
+                            (sin el código {waCountry.dial})
+                          </span>
+                        </label>
+                        <div className="flex">
+                          <div className="h-10 px-2 shrink-0 flex items-center gap-1 border rounded-l-lg bg-gray-50 text-gray-700 text-sm">
+                            <ReactCountryFlag
+                              svg
+                              countryCode={waCountry.iso}
+                              style={{ width: "1rem", height: "1rem" }}
+                            />
+                            <span className="font-medium">{waCountry.iso}</span>
+                            <span className="text-gray-500">
+                              {waCountry.dial}
+                            </span>
+                          </div>
+                          <input
+                            inputMode="numeric"
+                            placeholder="tu número sin el prefijo"
+                            value={waNumber}
+                            onChange={(e) => {
+                              setWaErr("");
+                              setWaNumber(onlyDigits(e.target.value));
+                            }}
+                            onBlur={() => {
+                              if (!waNumber) return setWaErr("");
+                              const ok = !!tryNormalizeWa(
+                                waISO,
+                                waCountry.dial,
+                                waNumber
+                              );
+                              setWaErr(
+                                ok
+                                  ? ""
+                                  : `El número no parece válido para ${waCountry.name}.`
+                              );
+                            }}
+                            className={`flex-1 h-10 px-3 border border-l-0 rounded-r-lg ${
+                              waErr ? "border-rose-400" : ""
+                            }`}
+                          />
+                        </div>
+
+                        <label className="mt-3 inline-flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={waVisible}
+                            onChange={(e) => setWaVisible(e.target.checked)}
+                          />
+                          <span>Mostrar en mi perfil</span>
+                        </label>
+
+                        {waErr ? (
+                          <div className="text-[11px] text-rose-600 mt-1">
+                            {waErr}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-gray-500 mt-1">
+                            Se usará para abrir WhatsApp (wa.me) desde tu perfil.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -603,7 +1128,8 @@ export default function ProfilePage() {
                         }
                       }}
                       disabled={savingProfile}
-                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60">
+                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60"
+                    >
                       {savingProfile ? "Guardando..." : "Guardar cambios"}
                     </button>
                   </div>
@@ -620,7 +1146,9 @@ export default function ProfilePage() {
             >
               <div>
                 <h2 className="text-lg font-semibold pr-40">Buscar dirección</h2>
-                <p className="text-sm text-gray-500">Ingresá una dirección, usá GPS o mové el punto en mapa</p>
+                <p className="text-sm text-gray-500">
+                  Ingresá una dirección, usá GPS o mové el punto en mapa
+                </p>
               </div>
               <Chevron open={openAddress} />
             </button>
@@ -628,7 +1156,9 @@ export default function ProfilePage() {
             {openAddress && (
               <div className="px-5 pb-5">
                 <div className="mb-3">
-                  <label className="block text-sm font-medium mb-1">Buscar dirección</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Buscar dirección
+                  </label>
                   <input
                     value={query}
                     onChange={onChangeQuery}
@@ -657,7 +1187,10 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="flex gap-2 mb-4">
-                  <button onClick={useGPS} className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black">
+                  <button
+                    onClick={useGPS}
+                    className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black"
+                  >
                     Usar GPS
                   </button>
                   <button
@@ -677,33 +1210,72 @@ export default function ProfilePage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm mb-1">País *</label>
-                    <input name="country" value={addr.country} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    <input
+                      name="country"
+                      value={addr.country}
+                      onChange={onChangeAddr}
+                      className="w-full border rounded-lg px-4 py-2"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm mb-1">Provincia / Estado *</label>
-                    <input name="state" value={addr.state} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    <label className="block text-sm mb-1">
+                      Provincia / Estado *
+                    </label>
+                    <input
+                      name="state"
+                      value={addr.state}
+                      onChange={onChangeAddr}
+                      className="w-full border rounded-lg px-4 py-2"
+                    />
                   </div>
                   <div>
-                    <label className="block text sm mb-1">Ciudad *</label>
-                    <input name="city" value={addr.city} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    <label className="block text-sm mb-1">Ciudad *</label>
+                    <input
+                      name="city"
+                      value={addr.city}
+                      onChange={onChangeAddr}
+                      className="w-full border rounded-lg px-4 py-2"
+                    />
                   </div>
                   <div>
-                    <label className="block text sm mb-1">Código Postal *</label>
-                    <input name="postalCode" value={addr.postalCode} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    <label className="block text-sm mb-1">Código Postal *</label>
+                    <input
+                      name="postalCode"
+                      value={addr.postalCode}
+                      onChange={onChangeAddr}
+                      className="w-full border rounded-lg px-4 py-2"
+                    />
                   </div>
                   <div className="md:col-span-2 grid md:grid-cols-3 gap-4">
                     <div className="md:col-span-2">
                       <label className="block text-sm mb-1">Calle *</label>
-                      <input name="street" value={addr.street} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                      <input
+                        name="street"
+                        value={addr.street}
+                        onChange={onChangeAddr}
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm mb-1">Número *</label>
-                      <input name="number" value={addr.number} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                      <input
+                        name="number"
+                        value={addr.number}
+                        onChange={onChangeAddr}
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm mb-1">Depto / Piso / Unidad</label>
-                    <input name="unit" value={addr.unit} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    <label className="block text-sm mb-1">
+                      Depto / Piso / Unidad
+                    </label>
+                    <input
+                      name="unit"
+                      value={addr.unit}
+                      onChange={onChangeAddr}
+                      className="w-full border rounded-lg px-4 py-2"
+                    />
                   </div>
                 </div>
 
@@ -712,7 +1284,10 @@ export default function ProfilePage() {
                   <div className="text-sm text-gray-600 mb-2">
                     {coords ? (
                       <>
-                        Coordenadas: <b>{coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}</b>
+                        Coordenadas:{" "}
+                        <b>
+                          {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
+                        </b>
                         {label ? <> · {label}</> : null}
                       </>
                     ) : (
@@ -767,7 +1342,9 @@ export default function ProfilePage() {
               >
                 <div>
                   <h2 className="text-lg font-semibold">Documentos</h2>
-                  <p className="text-sm text-gray-500">Antecedentes penales y matrícula</p>
+                  <p className="text-sm text-gray-500">
+                    Antecedentes penales y matrícula
+                  </p>
                 </div>
                 <Chevron open={openDocuments} />
               </button>
@@ -775,7 +1352,9 @@ export default function ProfilePage() {
               {openDocuments && (
                 <div className="px-5 pb-5">
                   {docsMsg && (
-                    <div className="mb-3 text-sm rounded-lg px-3 py-2 border bg-indigo-50 border-indigo-200 text-indigo-700">{docsMsg}</div>
+                    <div className="mb-3 text-sm rounded-lg px-3 py-2 border bg-indigo-50 border-indigo-200 text-indigo-700">
+                      {docsMsg}
+                    </div>
                   )}
 
                   {/* Antecedentes penales */}
@@ -783,7 +1362,9 @@ export default function ProfilePage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold">Certificado de antecedentes</h3>
+                          <h3 className="font-semibold">
+                            Certificado de antecedentes
+                          </h3>
                           <span
                             className={`text-[11px] px-2 py-0.5 rounded-full border ${
                               documents?.criminalRecord?.url
@@ -793,11 +1374,19 @@ export default function ProfilePage() {
                                 : "bg-gray-50 text-gray-700 border-gray-200"
                             }`}
                           >
-                            {documents?.criminalRecord?.url ? (crExpired ? "vencido" : "vigente") : "pendiente"}
+                            {documents?.criminalRecord?.url
+                              ? crExpired
+                                ? "vencido"
+                                : "vigente"
+                              : "pendiente"}
                           </span>
                         </div>
                         <p className="text-sm text-gray-600">
-                          Subí tu certificado en PDF. Podés indicar la fecha de vencimiento (si el BE lo soporta).
+                          Elegí el PDF y se sube automáticamente.{" "}
+                          <span className="text-gray-500">
+                            (Si querés guardar el vencimiento, elegilo antes de
+                            seleccionar el PDF).
+                          </span>
                         </p>
                         {documents?.criminalRecord?.url && (
                           <a
@@ -810,37 +1399,46 @@ export default function ProfilePage() {
                           </a>
                         )}
                       </div>
-                      <div className="text-xs text-gray-600">{savingDocs ? "Procesando…" : null}</div>
+                      <div className="text-xs text-gray-600">
+                        {savingDocs ? "Procesando…" : null}
+                      </div>
                     </div>
 
                     <div className="mt-3 grid sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-sm mb-1">Archivo (PDF)</label>
-                        <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer">
+                        <label className="block text-sm mb-1">
+                          Archivo (PDF)
+                        </label>
+                        <label
+                          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer ${
+                            savingDocs ? "opacity-60 pointer-events-none" : ""
+                          }`}
+                          title="Seleccionar archivo (se sube automáticamente)"
+                        >
                           <input
                             type="file"
                             accept="application/pdf"
                             className="hidden"
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const f = e.target.files?.[0];
-                              if (f) {
-                                setDocCrFile(f);
-                                setDocsMsg("PDF listo para subir. Hacé clic en “Subir antecedentes”.");
-                              }
+                              if (!f) return;
+                              setDocCrFile(f);
+                              await autoUpload({ which: "cr", file: f });
+                              e.target.value = "";
                             }}
                           />
-                          <span>Elegir archivo…</span>
+                          <span>{savingDocs ? "Subiendo…" : "Elegir archivo…"}</span>
                         </label>
                         <div className="text-xs text-gray-600 mt-1">
-                          {docCrFile
-                            ? docCrFile.name
-                            : documents?.criminalRecord?.url
+                          {documents?.criminalRecord?.url
                             ? "Archivo cargado"
                             : "Ningún archivo seleccionado"}
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">Vence (opcional)</label>
+                        <label className="block text-sm mb-1">
+                          Vence (opcional)
+                        </label>
                         <input
                           type="date"
                           value={docCrExpiresAt}
@@ -849,27 +1447,33 @@ export default function ProfilePage() {
                         />
                         {documents?.criminalRecord?.expiresAt && (
                           <div className="text-xs text-gray-600 mt-1">
-                            Actual: {new Date(documents.criminalRecord.expiresAt).toLocaleDateString()}
+                            Actual:{" "}
+                            {new Date(
+                              documents.criminalRecord.expiresAt
+                            ).toLocaleDateString()}
                           </div>
                         )}
                       </div>
                     </div>
 
                     <div className="mt-3 flex items-center gap-2">
-                      <button
-                        onClick={() => saveDocuments({ which: "cr" })}
-                        disabled={savingDocs}
-                        className="px-3 py-2 rounded-lg bg-[#0a0e17] text-white disabled:opacity-60"
-                      >
-                        {savingDocs ? "Subiendo…" : "Subir antecedentes"}
-                      </button>
                       {documents?.criminalRecord && (
                         <button
-                          onClick={() => removeDocument("cr")}
-                          disabled={savingDocs}
-                          className="px-3 py-2 rounded-lg border hover:bg-gray-50"
+                          role="button"
+                          className="px-3 py-1.5 rounded border border-rose-300 text-rose-700 hover:bg-rose-50 cursor-pointer"
+                          onClick={async () => {
+                            setSavingDocs(true);
+                            try {
+                              await deleteProfessionalDoc("criminal-record");
+                              await refreshDocs();
+                              setDocsMsg("Certificado eliminado.");
+                            } finally {
+                              setSavingDocs(false);
+                            }
+                          }}
+                          title="Eliminar certificado"
                         >
-                          Eliminar
+                          Eliminar certificado
                         </button>
                       )}
                     </div>
@@ -891,7 +1495,9 @@ export default function ProfilePage() {
                             {documents?.license?.url ? "cargada" : "pendiente"}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600">Subí tu matrícula en PDF.</p>
+                        <p className="text-sm text-gray-600">
+                          Elegí el PDF y se sube automáticamente.
+                        </p>
                         {documents?.license?.url && (
                           <a
                             href={documents.license.url}
@@ -903,46 +1509,58 @@ export default function ProfilePage() {
                           </a>
                         )}
                       </div>
-                      <div className="text-xs text-gray-600">{savingDocs ? "Procesando…" : null}</div>
+                      <div className="text-xs text-gray-600">
+                        {savingDocs ? "Procesando…" : null}
+                      </div>
                     </div>
 
                     <div className="mt-3">
                       <label className="block text-sm mb-1">Archivo (PDF)</label>
-                      <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer">
+                      <label
+                        className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer ${
+                          savingDocs ? "opacity-60 pointer-events-none" : ""
+                        }`}
+                        title="Seleccionar archivo (se sube automáticamente)"
+                      >
                         <input
                           type="file"
                           accept="application/pdf"
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const f = e.target.files?.[0];
-                            if (f) {
-                              setDocLicFile(f);
-                              setDocsMsg("PDF listo para subir. Hacé clic en “Subir matrícula”.");
-                            }
+                            if (!f) return;
+                            setDocLicFile(f);
+                            await autoUpload({ which: "lic", file: f });
+                            e.target.value = "";
                           }}
                         />
-                        <span>Elegir archivo…</span>
+                        <span>{savingDocs ? "Subiendo…" : "Elegir archivo…"}</span>
                       </label>
                       <div className="text-xs text-gray-600 mt-1">
-                        {docLicFile ? docLicFile.name : documents?.license?.url ? "Archivo cargado" : "Ningún archivo seleccionado"}
+                        {documents?.license?.url
+                          ? "Archivo cargado"
+                          : "Ningún archivo seleccionado"}
                       </div>
                     </div>
 
                     <div className="mt-3 flex items-center gap-2">
-                      <button
-                        onClick={() => saveDocuments({ which: "lic" })}
-                        disabled={savingDocs}
-                        className="px-3 py-2 rounded-lg bg-[#0a0e17] text-white disabled:opacity-60"
-                      >
-                        {savingDocs ? "Subiendo…" : "Subir matrícula"}
-                      </button>
                       {documents?.license && (
                         <button
-                          onClick={() => removeDocument("lic")}
-                          disabled={savingDocs}
-                          className="px-3 py-2 rounded-lg border hover:bg-gray-50"
+                          role="button"
+                          className="px-3 py-1.5 rounded border border-rose-300 text-rose-700 hover:bg-rose-50 cursor-pointer"
+                          onClick={async () => {
+                            setSavingDocs(true);
+                            try {
+                              await deleteProfessionalDoc("license");
+                              await refreshDocs();
+                              setDocsMsg("Matrícula eliminada.");
+                            } finally {
+                              setSavingDocs(false);
+                            }
+                          }}
+                          title="Eliminar matrícula"
                         >
-                          Eliminar
+                          Eliminar matrícula
                         </button>
                       )}
                     </div>
@@ -961,7 +1579,9 @@ export default function ProfilePage() {
               >
                 <div>
                   <h2 className="text-lg font-semibold">Disponibilidad</h2>
-                  <p className="text-sm text-gray-500">Agenda semanal y horarios</p>
+                  <p className="text-sm text-gray-500">
+                    Agenda semanal y horarios
+                  </p>
                 </div>
                 <Chevron open={openAvailability} />
               </button>
@@ -973,17 +1593,28 @@ export default function ProfilePage() {
                     <p className="text-gray-600 mt-2">Cargando…</p>
                   ) : (
                     <>
-                      {agendaMsg && <div className="mt-2 text-sm">{agendaMsg}</div>}
+                      {agendaMsg && (
+                        <div className="mt-2 text-sm">{agendaMsg}</div>
+                      )}
                       <div className="mt-3 space-y-3">
                         {DAYS.map((d, idx) => (
-                          <div key={d.key} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl bg-white">
+                          <div
+                            key={d.key}
+                            className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl bg-white"
+                          >
                             <div className="flex items-center gap-3 min-w-[130px]">
                               <input
                                 id={`day-${d.key}`}
                                 type="checkbox"
                                 checked={rows[idx].active}
                                 onChange={(e) =>
-                                  setRows((a) => a.map((r, i) => (i === idx ? { ...r, active: e.target.checked } : r)))
+                                  setRows((a) =>
+                                    a.map((r, i) =>
+                                      i === idx
+                                        ? { ...r, active: e.target.checked }
+                                        : r
+                                    )
+                                  )
                                 }
                               />
                               <label htmlFor={`day-${d.key}`}>{d.label}</label>
@@ -997,7 +1628,13 @@ export default function ProfilePage() {
                                   value={rows[idx].from}
                                   disabled={!rows[idx].active}
                                   onChange={(e) =>
-                                    setRows((a) => a.map((r, i) => (i === idx ? { ...r, from: e.target.value } : r)))
+                                    setRows((a) =>
+                                      a.map((r, i) =>
+                                        i === idx
+                                          ? { ...r, from: e.target.value }
+                                          : r
+                                      )
+                                    )
                                   }
                                   className="border rounded-lg px-3 py-2 text-sm"
                                 />
@@ -1010,7 +1647,13 @@ export default function ProfilePage() {
                                   value={rows[idx].to}
                                   disabled={!rows[idx].active}
                                   onChange={(e) =>
-                                    setRows((a) => a.map((r, i) => (i === idx ? { ...r, to: e.target.value } : r)))
+                                    setRows((a) =>
+                                      a.map((r, i) =>
+                                        i === idx
+                                          ? { ...r, to: e.target.value }
+                                          : r
+                                      )
+                                    )
                                   }
                                   className="border rounded-lg px-3 py-2 text-sm"
                                 />
@@ -1022,7 +1665,14 @@ export default function ProfilePage() {
                       <div className="flex justify-end gap-3 mt-4">
                         <button
                           onClick={() =>
-                            setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))
+                            setRows(
+                              DAYS.map((d) => ({
+                                key: d.key,
+                                active: false,
+                                from: "09:00",
+                                to: "18:00",
+                              }))
+                            )
                           }
                           className="px-4 py-2 rounded border"
                         >
