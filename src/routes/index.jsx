@@ -20,7 +20,10 @@ import VerifyEmailPage from "../pages/VerifyEmailPage";
 import VerifyEmailSent from "../pages/VerifyEmailSent";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import ResetPasswordPage from "../pages/ResetPasswordPage";
- 
+
+// 🆕
+import GoogleCallbackPage from "../pages/GoogleCallbackPage";
+
 function AppRoutes() {
   const { loading } = useAuth();
   const navigate = useNavigate();
@@ -45,6 +48,9 @@ function AppRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+
+        {/* 🆕 Callback OAuth (pública) */}
+        <Route path="/oauth/google/callback" element={<GoogleCallbackPage />} />
       </Route>
 
       {/* Protegidas */}
@@ -139,25 +145,22 @@ function AppRoutes() {
           </PrivateRoute>
         }
       />
-        <Route
-          path="/chats/:otherUserId?"
-          element={
-            <PrivateRoute allowedRoles={["user","professional","admin"]}>
-              <ChatsPage />
-            </PrivateRoute>
-          }
-        />
+      <Route
+        path="/chats/:otherUserId?"
+        element={
+          <PrivateRoute allowedRoles={["user","professional","admin"]}>
+            <ChatsPage />
+          </PrivateRoute>
+        }
+      />
 
-        {/* Verificación de correo */}
-        <Route path="/verify-email-sent" element={<VerifyEmailSent />} />
-        <Route path="/verify-email" element={<VerifyEmailPage />} />
+      {/* Verificación de correo */}
+      <Route path="/verify-email-sent" element={<VerifyEmailSent />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
 
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} /> {/* token por query ?token= */}
-
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} /> {/* token por query ?token= */}
     </Routes>
-
-    
   );
 }
 
