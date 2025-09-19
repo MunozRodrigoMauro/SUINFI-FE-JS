@@ -1,4 +1,3 @@
-// src/pages/BookingsPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/layout/Navbar";
 import { useAuth } from "../auth/AuthContext";
@@ -9,7 +8,7 @@ import { socket } from "../lib/socket";
 import BackBar from "../components/layout/BackBar";
 import { useNavigate } from "react-router-dom";
 
-// ⬇️ NUEVO
+// ⬇️ Reseñas
 import { getReviewForBooking } from "../api/reviewsService";
 import ReviewModal from "../components/reviews/ReviewModal";
 
@@ -21,7 +20,6 @@ export default function BookingsPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
 
-  // ⬇️ NUEVO: mapa bookingId -> bool exists
   const [reviewMap, setReviewMap] = useState({});
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState({ bookingId: "", professionalId: "" });
@@ -40,7 +38,6 @@ export default function BookingsPage() {
       const arr = Array.isArray(data) ? data : [];
       setItems(arr);
 
-      // ⬇️ NUEVO: para el cliente, cargar existencia de reseña en bookings completadas
       if (role !== "pro") {
         const completed = arr.filter((b) => b?.status === "completed");
         const entries = await Promise.all(
@@ -83,7 +80,7 @@ export default function BookingsPage() {
       <select
         value={status}
         onChange={(e) => setStatus(e.target.value)}
-        className="px-3 py-2 rounded border bg-white text-[#0a0e17] min-w-[140px]"
+        className="px-3 py-2 rounded border bg-white text-[#0a0e17] min-w-[140px] cursor-pointer"
         title="Filtrar por estado"
       >
         <option value="">Todos</option>
@@ -93,7 +90,7 @@ export default function BookingsPage() {
         <option value="completed">Completada</option>
         <option value="canceled">Cancelada</option>
       </select>
-      <button onClick={fetchData} className="px-3 py-2 rounded bg-slate-800 text-white hover:bg-black">
+      <button onClick={fetchData} className="px-3 py-2 rounded bg-slate-800 text-white hover:bg-black cursor-pointer">
         Refrescar
       </button>
     </div>
@@ -109,7 +106,7 @@ export default function BookingsPage() {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="flex-1 min-w-[140px] px-3 py-2 rounded border bg-white text-[#0a0e17]"
+            className="flex-1 min-w-[140px] px-3 py-2 rounded border bg-white text-[#0a0e17] cursor-pointer"
             title="Filtrar por estado"
           >
             <option value="">Todos</option>
@@ -122,14 +119,14 @@ export default function BookingsPage() {
           <select
             value={tab}
             onChange={(e) => setTab(e.target.value)}
-            className="flex-1 min-w-[140px] px-3 py-2 rounded border bg-white text-[#0a0e17]"
+            className="flex-1 min-w-[140px] px-3 py-2 rounded border bg-white text-[#0a0e17] cursor-pointer"
             title="Vista"
           >
             <option value="auto">Auto</option>
             <option value="client">Cliente</option>
             <option value="pro">Profesional</option>
           </select>
-          <button onClick={fetchData} className="w-full px-3 py-2 rounded bg-slate-800 text-white hover:bg-black">
+          <button onClick={fetchData} className="w-full px-3 py-2 rounded bg-slate-800 text-white hover:bg-black cursor-pointer">
             Refrescar
           </button>
         </div>
@@ -149,7 +146,6 @@ export default function BookingsPage() {
                     ? (bk?.client?._id || bk?.client?.user?._id)
                     : (bk?.professional?.user?._id);
 
-                // ⬇️ NUEVO: CTA reseña (cliente, completada, sin reseña previa)
                 const canReview =
                   role !== "pro" &&
                   bk?.status === "completed" &&
@@ -160,7 +156,7 @@ export default function BookingsPage() {
                     type="button"
                     onClick={(e) => {
                       e.preventDefault();
-                      e.stopPropagation(); // ⬅️ evita que el card abra el chat
+                      e.stopPropagation();
                       setReviewTarget({ bookingId: bk._id, professionalId: bk?.professional?._id });
                       setReviewOpen(true);
                     }}
@@ -196,7 +192,6 @@ export default function BookingsPage() {
         </div>
       </section>
 
-      {/* Modal reseña */}
       <ReviewModal
         open={reviewOpen}
         onClose={() => setReviewOpen(false)}
@@ -204,7 +199,6 @@ export default function BookingsPage() {
         bookingId={reviewTarget.bookingId}
         onSaved={() => {
           setReviewMap((m) => ({ ...m, [reviewTarget.bookingId]: true }));
-          // refrescamos para actualizar contadores si hace falta
           fetchData();
         }}
       />

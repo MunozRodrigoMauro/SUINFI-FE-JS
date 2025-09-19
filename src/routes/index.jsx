@@ -1,4 +1,3 @@
-// src/routes/index.jsx
 import React, { useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import HomePage from "../pages/HomePage";
@@ -20,9 +19,11 @@ import VerifyEmailPage from "../pages/VerifyEmailPage";
 import VerifyEmailSent from "../pages/VerifyEmailSent";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import ResetPasswordPage from "../pages/ResetPasswordPage";
-
+import CheckoutReturnPage from "../pages/CheckoutReturnPage";
 // 🆕
 import GoogleCallbackPage from "../pages/GoogleCallbackPage";
+// 🆕 Liquidaciones admin
+import SettlementsPage from "../pages/admin/SettlementsPage";
 
 function AppRoutes() {
   const { loading } = useAuth();
@@ -48,7 +49,6 @@ function AppRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-
         {/* 🆕 Callback OAuth (pública) */}
         <Route path="/oauth/google/callback" element={<GoogleCallbackPage />} />
       </Route>
@@ -63,6 +63,16 @@ function AppRoutes() {
             </PrivateRoute>
           }
         />
+        {/* 🆕 ruta de Liquidaciones */}
+        <Route
+          path="/dashboard/admin/settlements"
+          element={
+            <PrivateRoute allowedRoles={["admin"]}>
+              <SettlementsPage />
+            </PrivateRoute>
+          }
+        />
+
         <Route
           path="/dashboard/user"
           element={
@@ -157,9 +167,9 @@ function AppRoutes() {
       {/* Verificación de correo */}
       <Route path="/verify-email-sent" element={<VerifyEmailSent />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
-
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} /> {/* token por query ?token= */}
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/checkout/return" element={<CheckoutReturnPage />} />
     </Routes>
   );
 }

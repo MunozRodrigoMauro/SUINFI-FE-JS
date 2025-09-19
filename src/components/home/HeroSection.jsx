@@ -25,11 +25,10 @@ function HeroSection() {
   }
 
   return (
-    <section className="relative min-h-[80vh] overflow-hidden">
-      {/* Fallback sólido con tu gradiente */}
+    <section className="relative min-h-[40vh] md:min-h-[48vh] overflow-hidden">
+      {/* Fondo */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e17] to-[#0a0e17]" />
 
-      {/* Video de fondo */}
       <video
         className="absolute inset-0 w-full h-full object-cover motion-safe:block motion-reduce:hidden"
         autoPlay
@@ -41,30 +40,53 @@ function HeroSection() {
         <source src="/videos/VIDEOSUINFI.webm" type="video/webm" />
       </video>
 
-      {/* Overlay MÁS oscuro para tapar el video */}
       <div className="absolute inset-0 bg-black/70" />
 
       {/* Contenido */}
-      <div className="relative z-10 flex flex-col min-h-[80vh] text-white px-4">
+      <div className="relative z-10 flex flex-col min-h-[42vh] md:min-h-[50vh] text-white px-4">
         {/* Título */}
-        <div className="pt-18 md:pt-26 flex items-center justify-center">
-          <h1 className="text-4xl md:text-6xl font-extrabold leading-tight text-center max-w-4xl">
+        <div className="pt-20 md:pt-26 flex items-center justify-center">
+          <h1
+            className="
+              text-3xl md:text-6xl font-extrabold
+              leading-[1.05] tracking-[-0.03em]
+              text-center max-w-2xl md:max-w-3xl
+            "
+          >
             Conectá con profesionales en tiempo real
           </h1>
         </div>
 
-        <div className="flex-1" />
-
-        {/* CTA más grande */}
-        <div className="pb-30 md:pb-40 flex items-center justify-center">
+        {/* Espacio extra entre texto y botón */}
+        <div className="mt-6 md:mt-20 flex items-center justify-center">
           <Link
             to={ctaLink}
-            className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-bold px-10 py-5 rounded-full shadow-lg hover:scale-110 hover:shadow-xl transition transform text-lg md:text-xl"
+            className="btn-breathe bg-gradient-to-r from-emerald-600 to-teal-700 
+              text-white font-bold px-7 py-4
+              rounded-full shadow-lg hover:scale-110 hover:shadow-xl 
+              transition transform text-xl md:text-2xl"
           >
             {ctaText}
           </Link>
         </div>
       </div>
+
+      {/* Animación suave del botón (breathe) */}
+      <style>{`
+        @keyframes breathe {
+          0%, 100% {
+            transform: translateY(0) scale(1);
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.35);
+          }
+          50% {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 0 0 12px rgba(16, 185, 129, 0);
+          }
+        }
+        .btn-breathe {
+          animation: breathe 3s ease-in-out infinite;
+        }
+      `}</style>
     </section>
   );
 }

@@ -148,14 +148,14 @@ export default function AvailabilityScheduleForm({
           <button
             type="button"
             onClick={clearAll}
-            className="px-4 py-2 rounded-lg border text-gray-700 hover:bg-gray-50"
+            className="px-4 py-2 rounded-lg border text-gray-700 hover:bg-gray-50 cursor-pointer"
           >
             Limpiar todo
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60"
+            className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
           >
             {saving ? "Guardando..." : "Guardar agenda"}
           </button>

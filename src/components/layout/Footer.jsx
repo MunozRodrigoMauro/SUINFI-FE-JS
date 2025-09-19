@@ -12,7 +12,7 @@ function Footer() {
         <div className="px-4 pt-8 pb-4">
           {/* Logo y descripción (siempre visible) */}
           <div className="mb-6">
-            <h3 className="text-white font-bold text-xl mb-2">SUINFI</h3>
+            <h3 className="text-white font-bold text-xl mb-2">CuyIT</h3>
             <p className="text-gray-400 text-sm">
               Conectamos profesionales con usuarios en tiempo real.
             </p>
@@ -57,7 +57,7 @@ function Footer() {
 
         {/* Derechos reservados (mobile) */}
         <div className="border-t border-gray-800 px-4 py-4 text-center text-gray-500 text-xs">
-          © {new Date().getFullYear()} SUINFI — Todos los derechos reservados.
+          © {new Date().getFullYear()} CuyIT — Todos los derechos reservados.
         </div>
       </div>
 
@@ -66,7 +66,7 @@ function Footer() {
         <div className="max-w-7xl mx-auto px-4 py-12">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div className="md:col-span-2">
-              <h3 className="text-white font-bold text-xl mb-4">SUINFI</h3>
+              <h3 className="text-white font-bold text-xl mb-4">CuyIT</h3>
               <p className="text-gray-400">
                 Conectamos profesionales con usuarios en tiempo real. Reservas, chat y pagos seguros.
               </p>
@@ -82,14 +82,14 @@ function Footer() {
             <div>
               <h4 className="text-white font-semibold mb-4">Síguenos</h4>
               <div className="flex space-x-4">
-                <a href="https://www.instagram.com/suinfi.es/" className="text-gray-400 hover:text-white text-xl" target="_blank"><FaInstagram /></a>
-                <a href="https://www.facebook.com/p/Suinfi-61553712893461/" className="text-gray-400 hover:text-white text-xl" target="_blank"><FaFacebook /></a>
-                <a href="https://www.linkedin.com/company/suinfi/" className="text-gray-400 hover:text-white text-xl" target="_blank"><FaLinkedin /></a>
+                <a href="https://www.instagram.com/__cuyit__/" className="text-gray-400 hover:text-white text-xl" target="_blank"><FaInstagram /></a>
+                <a href="#" className="text-gray-400 hover:text-white text-xl" target="_blank"><FaFacebook /></a>
+                <a href="#" className="text-gray-400 hover:text-white text-xl" target="_blank"><FaLinkedin /></a>
               </div>
             </div>
           </div>
           <div className="border-t border-gray-800 pt-6 text-center text-gray-500 text-sm">
-            © {new Date().getFullYear()} SUINFI — Todos los derechos reservados.
+            © {new Date().getFullYear()} CuyIT — Todos los derechos reservados.
           </div>
         </div>
       </div>

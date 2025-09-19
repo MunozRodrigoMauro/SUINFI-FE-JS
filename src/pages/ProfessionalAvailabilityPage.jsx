@@ -235,7 +235,7 @@ export default function ProfessionalAvailabilityPage() {
             onClick={() =>
               setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" })))
             }
-            className="text-sm bg-white border px-4 py-2 rounded-lg hover:bg-gray-50"
+            className="text-sm bg-white border px-4 py-2 rounded-lg hover:bg-gray-50 cursor-pointer"
           >
             Restablecer
           </button>

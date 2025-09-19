@@ -1,44 +1,41 @@
-// src/api/axiosUser.js
+// frontend/src/api/axiosUser.js
 import axios from "axios";
 
-// Instancia base
+// Base normalizada: acepta VITE_API_URL con o sin /api al final
+const RAW = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const BASE = RAW.replace(/\/+$/, "").match(/\/api$/i) ? RAW.replace(/\/+$/, "") : `${RAW.replace(/\/+$/, "")}/api`;
+
 const axiosUser = axios.create({
-  baseURL: "http://localhost:3000/api",
+  baseURL: BASE, // <- ahora usa env y queda consistente con ngrok
   headers: { "Content-Type": "application/json" },
 });
 
-// Interceptor: agrega JWT excepto en /auth/verify-email/*
+function getToken() {
+  return (
+    localStorage.getItem("auth_token") ||
+    sessionStorage.getItem("auth_token") ||
+    localStorage.getItem("token") ||
+    ""
+  );
+}
+
 axiosUser.interceptors.request.use((config) => {
   try {
     const full = `${config.baseURL || ""}${config.url || ""}`;
-    const isVerifyEmail = full.includes("/auth/verify-email/");
-
+    const isVerifyEmail = /\/auth\/verify-email\//i.test(full);
     if (!isVerifyEmail) {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       if (token) config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      // aseguramos no mandar Authorization si el global quedó seteado
-      if (config.headers?.Authorization) {
-        delete config.headers.Authorization;
-      }
+    } else if (config.headers?.Authorization) {
+      delete config.headers.Authorization;
     }
-  } catch (_) {
-    // noop
-  }
+  } catch (_) {}
   return config;
 });
 
-// (opcional) Interceptor de respuesta para log simple
 axiosUser.interceptors.response.use(
   (res) => res,
-  (err) => {
-    const status = err?.response?.status;
-    const data = err?.response?.data;
-    const url = err?.config?.baseURL
-      ? `${err.config.baseURL}${err.config.url}`
-      : err?.config?.url;
-    return Promise.reject(err);
-  }
+  (err) => Promise.reject(err)
 );
 
 export default axiosUser;

@@ -33,14 +33,14 @@ export default function BookingActions({ booking, role = "client", onChanged }) 
             <button
               onClick={() => doSet("accepted")}
               disabled={busy}
-              className="px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+              className="px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 cursor-pointer"
             >
               Aceptar
             </button>
             <button
               onClick={() => doSet("rejected")}
               disabled={busy}
-              className="px-3 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
+              className="px-3 py-1 rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60 cursor-pointer"
             >
               Rechazar
             </button>
@@ -50,7 +50,7 @@ export default function BookingActions({ booking, role = "client", onChanged }) 
           <button
             onClick={() => doSet("completed")}
             disabled={busy}
-            className="px-3 py-1 rounded bg-slate-800 text-white hover:bg-black disabled:opacity-60"
+            className="px-3 py-1 rounded bg-slate-800 text-white hover:bg-black disabled:opacity-60 cursor-pointer"
           >
             Completar
           </button>
@@ -68,7 +68,7 @@ export default function BookingActions({ booking, role = "client", onChanged }) 
             ref={triggerRef}
             onClick={() => setCancelOpen(true)}
             disabled={busy}
-            className="px-3 py-1 rounded bg-gray-800 text-white hover:bg-black disabled:opacity-60"
+            className="px-3 py-1 rounded bg-gray-800 text-white hover:bg-black disabled:opacity-60 cursor-pointer"
           >
             Cancelar
           </button>

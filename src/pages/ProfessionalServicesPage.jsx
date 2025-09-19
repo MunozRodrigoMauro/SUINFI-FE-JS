@@ -216,7 +216,7 @@ export default function ProfessionalServicesPage() {
                 <select
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
-                  className="w-full px-3 py-2 rounded bg-white text-black"
+                  className="w-full px-3 py-2 rounded bg-white text-black cursor-pointer"
                 >
                   <option value="">Todas</option>
                   {(categories || []).map((c) => (
@@ -241,15 +241,15 @@ export default function ProfessionalServicesPage() {
 
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2 mt-3 text-sm">
-              <button onClick={selectAllFiltered} className="px-3 py-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white">
+              <button onClick={selectAllFiltered} className="px-3 py-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer">
                 Seleccionar todo (vista)
               </button>
-              <button onClick={clearAllFiltered} className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white">
+              <button onClick={clearAllFiltered} className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white cursor-pointer">
                 Quitar todo (vista)
               </button>
               <button
                 onClick={clearAll}
-                className="px-3 py-1.5 rounded border border-gray-300 bg-white text-black hover:bg-gray-50"
+                className="px-3 py-1.5 rounded border border-gray-300 bg-white text-black hover:bg-gray-50 cursor-pointer"
               >
                 Limpiar selección
               </button>

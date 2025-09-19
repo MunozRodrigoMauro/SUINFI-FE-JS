@@ -1,3 +1,4 @@
+// src/api/bookingService.js
 import axiosUser from "./axiosUser";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
@@ -36,9 +37,15 @@ function friendlyBookingMessage(status, serverMsg = "", details = {}) {
   return serverMsg || "No se pudo crear la reserva.";
 }
 
+// ⬇️ Para flujo “sin seña”: mantiene tu POST directo a /bookings.
+//    Compat extra: si llega date+time y no scheduledAt, lo calculo (sin romper el BE).
 export async function createBooking(payload) {
   try {
-    const { data } = await axiosUser.post(`${API}/bookings`, payload);
+    const body = { ...payload };
+    if (!body.scheduledAt && body.date && body.time) {
+      body.scheduledAt = dateTimeToISO(body.date, body.time);
+    }
+    const { data } = await axiosUser.post(`${API}/bookings`, body);
     return data;
   } catch (err) {
     const status = err?.response?.status ?? 0;

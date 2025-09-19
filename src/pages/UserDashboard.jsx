@@ -449,6 +449,24 @@ function UserDashboard() {
     return () => navigator.geolocation.clearWatch(id);
   }, [liveOrigin]);
 
+  // --- Helper UI: badge de seña (no rompe si el campo no viene)
+  const DepositBadge = ({ p }) => {
+    const enabled = !!p?.depositEnabled;
+    const amt = Number(p?.depositAmount || 0);
+    return (
+      <span
+        className={`text-[11px] px-2 py-0.5 rounded-full border ${
+          enabled
+            ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+            : "bg-gray-50 text-gray-700 border-gray-200"
+        }`}
+        title={enabled ? (amt > 0 ? `Seña requerida: $${amt}` : "Seña requerida") : "No requiere seña"}
+      >
+        {enabled ? (amt > 0 ? `Seña requerida · $${amt}` : "Seña requerida") : "Sin seña"}
+      </span>
+    );
+  };
+
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] pt-24 pb-20 px-4">
       <div className="max-w-6xl mx-auto">
@@ -496,10 +514,10 @@ function UserDashboard() {
 
             <div className="flex flex-col gap-2 mb-3">
               <div className="flex gap-2">
-                <button onClick={useProfileAddress} className="px-3 py-2 rounded border bg-white hover:bg-gray-50">
+                <button onClick={useProfileAddress} className="px-3 py-2 rounded border bg-white hover:bg-gray-50 cursor-pointer">
                   Usar mi perfil
                 </button>
-                <button onClick={useGPS} className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black">
+                <button onClick={useGPS} className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black cursor-pointer">
                   Usar GPS
                 </button>
               </div>
@@ -533,7 +551,7 @@ function UserDashboard() {
                 <select
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
-                  className="w-full px-3 py-2 rounded border bg-white"
+                  className="w-full px-3 py-2 rounded border bg-white cursor-pointer"
                 >
                   <option value="">Todas</option>
                   {(categories || []).map((c) => (
@@ -548,7 +566,7 @@ function UserDashboard() {
                 <select
                   value={serviceId}
                   onChange={(e) => setServiceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded border bg-white"
+                  className="w-full px-3 py-2 rounded border bg-white cursor-pointer"
                 >
                   <option value="">Todos</option>
                   {(filteredServices || []).map((s) => (
@@ -608,7 +626,7 @@ function UserDashboard() {
                   <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
                   <div className="h-3 bg-gray-200 rounded w-1/2 mb-4" />
                   <div className="flex gap-2 mb-4">
-                    <div className="h-6 w-20 bg-gray-2 00 rounded-full" />
+                    <div className="h-6 w-20 bg-gray-200 rounded-full" />
                     <div className="h-6 w-16 bg-gray-200 rounded-full" />
                   </div>
                   <div className="h-8 bg-gray-200 rounded" />
@@ -671,7 +689,7 @@ function UserDashboard() {
                       )}
                     </div>
 
-                    {/* Documentos */}
+                    {/* Documentos + Seña */}
                     <div className="mt-2 flex flex-wrap gap-2">
                       {(() => {
                         const d = p.documents || {};
@@ -698,6 +716,8 @@ function UserDashboard() {
                             >
                               Matrícula: {lic?.url ? "cargada" : "pendiente"}
                             </span>
+                            {/* Badge de seña */}
+                            <DepositBadge p={p} />
                           </>
                         );
                       })()}
@@ -710,13 +730,13 @@ function UserDashboard() {
                     <div className="mt-4 flex justify-end gap-2">
                       <button
                         onClick={() => navigate(`/chats/${p?.user?._id}`)}
-                        className="text-sm font-medium bg:white bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
+                        className="text-sm font-medium bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
                       >
                         Chatear
                       </button>
                       <button
                         onClick={() => navigate(`/professional/${p._id}?reserve=1`)}
-                        className="text-sm font-medium text:white text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-md shadow-sm cursor-pointer"
+                        className="text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-md shadow-sm cursor-pointer"
                       >
                         Reservar
                       </button>
@@ -813,18 +833,19 @@ function UserDashboard() {
                           <div className="text-sm text-gray-700">{b?.service?.name || "Servicio"}</div>
                           <div className="text-sm text-gray-600">{formatDateTime(b?.scheduledAt)}</div>
                         </div>
-                        </div>
-                        <div     className="flex items-center gap-2"
-                          onClick={(e) => {
-                            // ⬅️ MUY IMPORTANTE: evita que abrir/cerrar modal dispare el onClick del card (chat)
-                            e.stopPropagation();
-                          }}
-                        >
-                          <BookingStatusBadge status={b?.status} />
-                          {/* Acciones para el cliente: cancelar si aplica */}
-                          <BookingActions booking={b} role="client" onChanged={fetchRecent} />
-                        </div>
-                      </div>  
+                      </div>
+                      <div
+                        className="flex items-center gap-2"
+                        onClick={(e) => {
+                          // ⬅️ MUY IMPORTANTE: evita que abrir/cerrar modal dispare el onClick del card (chat)
+                          e.stopPropagation();
+                        }}
+                      >
+                        <BookingStatusBadge status={b?.status} />
+                        {/* Acciones para el cliente: cancelar si aplica */}
+                        <BookingActions booking={b} role="client" onChanged={fetchRecent} />
+                      </div>
+                    </div>
                     {b?.note && (
                       <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
                         {b.note}
@@ -920,6 +941,19 @@ function UserDashboard() {
                         {restCount > 0 && (
                           <span className="text-xs px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
                             +{restCount} más
+                          </span>
+                        )}
+                      </div>
+                      {/* Seña */}
+                      {/* justo debajo de los chips de documentos */}
+                      <div className="mt-2">
+                        {p?.depositEnabled ? (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                            Requiere seña{Number(p?.depositAmount) > 0 ? ` ($${p.depositAmount})` : ""}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                            Sin seña
                           </span>
                         )}
                       </div>

@@ -142,7 +142,7 @@ export default function ChatDock({ chats = [], onOpenChat }) {
             type="button"
             onClick={() => setOpenList((o) => !o)}
             aria-expanded={openList}
-            className="group w-full px-4 py-3 flex items-center justify-between border-b cursor-pointer select-none"
+            className="group w-full px-4 py-3 flex items-center justify-between border-b cursor-pointer select-none hover:bg-slate-50 transition-colors"
             title={openList ? "Contraer" : "Expandir"}
           >
             <div className="relative flex items-center gap-2">
@@ -174,53 +174,40 @@ export default function ChatDock({ chats = [], onOpenChat }) {
           {openList && (
             <div className="max-h-[46vh] overflow-y-auto bg-white">
               {merged.map((c) => {
-                const name =
-                  c?.otherUser?.name || c?.otherUser?.email || "Usuario";
+                const name = c?.otherUser?.name || c?.otherUser?.email || "Usuario";
                 const peerId = String(c?.otherUser?._id || "");
                 const isAvail = availableSet.has(peerId);
-                const avatar = c?.otherUser?.avatarUrl
-                  ? absUrl(c.otherUser.avatarUrl)
-                  : "";
+                const avatar = c?.otherUser?.avatarUrl ? absUrl(c.otherUser.avatarUrl) : "";
                 const unread = isUnread(c);
 
                 return (
                   <button
                     key={c._id}
                     onClick={() => openWindow(c?.otherUser?._id, name, c?.otherUser?.avatarUrl || "")}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg cursor-pointer transition 
+                              hover:bg-gray-50 hover:shadow-sm hover:ring-1 hover:ring-slate-200
+                              focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 active:bg-gray-100"
                   >
                     <div className="relative h-9 w-9 rounded-full bg-slate-200 overflow-hidden shrink-0 grid place-items-center">
                       {avatar ? (
-                        <img
-                          src={avatar}
-                          alt={name}
-                          className="h-full w-full object-cover"
-                        />
+                        <img src={avatar} alt={name} className="h-full w-full object-cover" />
                       ) : (
                         <span className="text-sm font-semibold text-slate-700">
                           {name.charAt(0).toUpperCase()}
                         </span>
                       )}
                       <span
-                        className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
-                          isAvail ? "bg-emerald-500" : "bg-gray-400"
-                        }`}
+                        className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${isAvail ? "bg-emerald-500" : "bg-gray-400"}`}
                         title={isAvail ? "Disponible" : "No disponible"}
                       />
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div
-                        className={`leading-5 truncate ${
-                          unread ? "font-semibold text-black" : "font-medium"
-                        }`}
-                      >
+                      <div className={`leading-5 truncate ${unread ? "font-semibold text-black" : "font-medium"}`}>
                         {name}
                       </div>
                       <div
-                        className={`text-xs truncate ${
-                          unread ? "text-black font-semibold" : "text-gray-500"
-                        }`}
+                        className={`text-xs truncate ${unread ? "text-black font-semibold" : "text-gray-500"}`}
                         title={c?.lastMessage?.text || ""}
                       >
                         {c?.lastMessage?.text || "—"}
@@ -229,10 +216,7 @@ export default function ChatDock({ chats = [], onOpenChat }) {
 
                     {/* Puntito tipo IG si está no leído */}
                     {unread && (
-                      <span
-                        className="ml-2 h-2.5 w-2.5 rounded-full bg-sky-500 shrink-0"
-                        aria-hidden="true"
-                      />
+                      <span className="ml-2 h-2.5 w-2.5 rounded-full bg-sky-500 shrink-0" aria-hidden="true" />
                     )}
                   </button>
                 );
@@ -241,6 +225,7 @@ export default function ChatDock({ chats = [], onOpenChat }) {
           )}
         </div>
       </div>
+
 
       {/* Ventanas flotantes (desktop) */}
       <div className="hidden md:flex fixed right-4 bottom-24 z-40 gap-3">
@@ -464,7 +449,7 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="text-white/80 hover:text-white text-sm"
+            className="text-white/80 hover:text-white text-sm cursor-pointer"
             onClick={onOpen}
             title="Abrir chat completo"
           >
@@ -472,7 +457,7 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
           </button>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white"
+            className="text-white/80 hover:text-white cursor-pointer"
             title="Cerrar"
           >
             <LuX className="h-5 w-5" />

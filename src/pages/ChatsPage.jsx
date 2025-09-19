@@ -310,16 +310,21 @@ export default function ChatsPage() {
                     <button
                       key={c._id}
                       onClick={() => navigate(`/chats/${u._id}`)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 ${
-                        isActive ? "bg-gray-50" : ""
-                      }`}
+                      aria-current={isActive ? "page" : undefined}
+                      title={name}
+                      className={`group w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg cursor-pointer transition
+                        ${isActive
+                          ? "bg-slate-50 ring-1 ring-slate-200"
+                          : "hover:bg-gray-50 hover:shadow-sm hover:ring-1 hover:ring-slate-200"
+                        }
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 active:bg-gray-100`}
                     >
                       <div className="relative h-10 w-10 rounded-full bg-slate-200 grid place-items-center overflow-hidden">
                         {avatar ? (
                           <img
                             src={avatar}
                             alt={name}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.02]"
                           />
                         ) : (
                           <span className="text-sm font-semibold text-slate-700">
@@ -335,10 +340,10 @@ export default function ChatsPage() {
                         />
                       </div>
                       <div className="min-w-0">
-                        <div className="font-medium leading-5 truncate">
+                        <div className="font-medium leading-5 truncate group-hover:text-black">
                           {name}
                         </div>
-                        <div className="text-xs text-gray-500 truncate">
+                        <div className="text-xs text-gray-500 truncate" title={c?.lastMessage?.text || ""}>
                           {c?.lastMessage?.text || "—"}
                         </div>
                       </div>
@@ -348,6 +353,7 @@ export default function ChatsPage() {
               )}
             </div>
           </aside>
+
 
           {/* Conversación */}
           <main className="rounded-2xl border bg-white shadow-sm overflow-hidden min-h-[70vh]">

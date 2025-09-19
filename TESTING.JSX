@@ -10,7 +10,7 @@ function UserDashboard() {
     <section className="min-h-screen bg-gradient-to-b from-[#0a0e17] to-[#0a0e17] text-white py-20 px-4">
       <div className="max-w-6xl mx-auto">
 
-        {/* ✅ Bienvenida */}
+        {/* Bienvenida */}
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold mb-4">🎯 Panel del Cliente</h1>
           <p className="text-lg text-gray-300">
@@ -20,7 +20,7 @@ function UserDashboard() {
           </p>
         </div>
 
-        {/* ✅ Filtros inteligentes */}
+        {/* Filtros inteligentes */}
         <div className="bg-[#111827] rounded-lg p-6 mb-12 shadow-md">
           <div className="grid md:grid-cols-3 gap-4">
             <input className="w-full px-4 py-2 rounded bg-white text-black placeholder-gray-600" placeholder="🔍 Rubro..." />
@@ -34,7 +34,7 @@ function UserDashboard() {
           </div>
         </div>
 
-        {/* ✅ Acciones rápidas */}
+        {/* Acciones rápidas */}
         <div className="grid md:grid-cols-3 gap-8 mb-16">
           {[
             {

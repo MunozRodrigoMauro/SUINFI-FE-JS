@@ -19,7 +19,7 @@ function TopBar({ showBack = true }) {
               ← Volver
             </button>
           )}
-          <img src={logo} alt="Suinfi" className="h-8" />
+          <img src={logo} alt="CuyIT" className="h-8" />
         </div>
       </div>
     </header>

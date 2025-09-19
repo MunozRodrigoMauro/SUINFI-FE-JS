@@ -155,8 +155,8 @@ function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 py-2 flex justify-between items-center h-14 md:h-16">
         {/* Logo */}
-        <Link to="/" className="flex items-center">
-          <img src={logo} alt="SUINFI logo" className="h-6 md:h-6 object-contain" />
+        <Link to="/" className="flex items-center" color="white">
+        <img src={logo} alt="CuyIT logo" className="h-7 md:h-7 object-contain" />
         </Link>
 
         <div className="flex items-center gap-3 text-sm font-medium text-gray-300">
@@ -178,13 +178,13 @@ function Navbar() {
                     onClick={() => {
                       /* abrir chat de soporte */
                     }}
-                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                   >
                     Chat con soporte
                   </button>
                   <button
                     onClick={() => window.open("https://tus-requisitos-ejemplo", "_blank")}
-                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                   >
                     Requisitos para socios de la app
                   </button>
@@ -193,7 +193,7 @@ function Navbar() {
                       logout();
                       navigate("/login");
                     }}
-                    className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                    className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
                   >
                     Cerrar sesión
                   </button>
@@ -249,21 +249,21 @@ function Navbar() {
 
                       <button
                         onClick={goToDashboard}
-                        className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                        className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                       >
                         Ir a mi panel
                       </button>
                       <Link
                         to="/profile"
                         onClick={() => setOpenMenu(false)}
-                        className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                        className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                       >
                         Mi perfil
                       </Link>
                       <Link
                         to="/chats"
                         onClick={() => setOpenMenu(false)}
-                        className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                        className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                       >
                         Mensajes
                       </Link>
@@ -284,7 +284,7 @@ function Navbar() {
                               <button
                                 onClick={toggleAvailability}
                                 disabled={loadingAvail}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition cursor-pointer ${
                                   isAvailableNow ? "bg-emerald-500" : "bg-gray-300"
                                 } ${loadingAvail ? "opacity-60" : ""}`}
                               >
@@ -306,7 +306,7 @@ function Navbar() {
                           logout();
                           navigate("/login");
                         }}
-                        className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors border-t"
+                        className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors border-t cursor-pointer"
                       >
                         Cerrar sesión
                       </button>

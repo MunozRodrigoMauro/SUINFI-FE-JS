@@ -29,6 +29,9 @@ import {
   getMyProfessional,
   uploadProfessionalDoc,
   deleteProfessionalDoc,
+  // ▶️ NUEVO:
+  getMyPayout,
+  updateMyPayout,
 } from "../api/professionalService";
 
 // WhatsApp
@@ -374,6 +377,28 @@ export default function ProfilePage() {
 
   const waCountry = useMemo(() => findCountry(waISO), [waISO]);
 
+  // ───────── Depósito/Seña (nuevo)
+  const [openDeposit, setOpenDeposit] = useState(false);
+  const [depositEnabled, setDepositEnabled] = useState(false);
+  const [depositAmount, setDepositAmount] = useState("");
+  const [savingDeposit, setSavingDeposit] = useState(false);
+  const [depositMsg, setDepositMsg] = useState("");
+  const [depositMsgType, setDepositMsgType] = useState("success");
+
+  // ───────── Cobros / Datos bancarios (nuevo)
+  const [openPayout, setOpenPayout] = useState(false);
+  const [payout, setPayout] = useState({
+    holderName: "",
+    docType: "DNI",
+    docNumber: "",
+    bankName: "",
+    cbu: "",
+    alias: "",
+  });
+  const [savingPayout, setSavingPayout] = useState(false);
+  const [payoutMsg, setPayoutMsg] = useState("");
+  const [payoutMsgType, setPayoutMsgType] = useState("success");
+
   const refreshDocs = async () => {
     try {
       const mine = await getMyProfessional();
@@ -499,6 +524,40 @@ export default function ProfilePage() {
           setWaNumber(picked.local);
           setWaVisible(!!meWa.visible);
         }
+
+        // Depósito/Seña: valores actuales
+        if (mine) {
+          setDepositEnabled(!!mine.depositEnabled);
+          setDepositAmount(
+            typeof mine.depositAmount === "number" && Number.isFinite(mine.depositAmount)
+              ? String(mine.depositAmount)
+              : ""
+          );
+        }
+
+        // Cobros / Payout: cargar datos actuales
+        if (mine?.payout) {
+          setPayout({
+            holderName: mine.payout.holderName || "",
+            docType: mine.payout.docType || "DNI",
+            docNumber: mine.payout.docNumber || "",
+            bankName: mine.payout.bankName || "",
+            cbu: mine.payout.cbu || "",
+            alias: mine.payout.alias || "",
+          });
+        } else if (hasProfessional) {
+          try {
+            const p = await getMyPayout();
+            setPayout({
+              holderName: p?.holderName || "",
+              docType: p?.docType || "DNI",
+              docNumber: p?.docNumber || "",
+              bankName: p?.bankName || "",
+              cbu: p?.cbu || "",
+              alias: p?.alias || "",
+            });
+          } catch {}
+        }
       } catch {
         setHasProfessional(false);
       } finally {
@@ -523,6 +582,17 @@ export default function ProfilePage() {
     const t = setTimeout(() => setDocsMsg(""), 2500);
     return () => clearTimeout(t);
   }, [docsMsg]);
+  useEffect(() => {
+    if (!depositMsg) return;
+    const t = setTimeout(() => setDepositMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [depositMsg]);
+  // ▶️ NUEVO: limpiar mensajes payout
+  useEffect(() => {
+    if (!payoutMsg) return;
+    const t = setTimeout(() => setPayoutMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [payoutMsg]);
 
   const onChangeQuery = (e) => {
     setAllowSuggests(true);
@@ -574,7 +644,7 @@ export default function ProfilePage() {
     );
   };
 
-  // ✅ essentialsOk — (esto faltaba y rompía el render)
+  // ✅ essentialsOk
   const essentialsOk = useMemo(() => {
     const nameOk = form.name.trim().length >= 2;
     const addrOk =
@@ -780,6 +850,87 @@ export default function ProfilePage() {
     }
   };
 
+  // Depósito/Seña: guardar
+  const onSaveDeposit = async () => {
+    setSavingDeposit(true);
+    try {
+      const amt = String(depositAmount).trim();
+      // límites ARS
+      const MIN = 2000;
+      const MAX = 5000;
+
+      if (depositEnabled) {
+        const n = Number(amt);
+        if (!Number.isFinite(n) || n < MIN || n > MAX) {
+          setDepositMsgType("error");
+          setDepositMsg(`El monto debe estar entre $${MIN.toLocaleString("es-AR")} y $${MAX.toLocaleString("es-AR")}.`);
+          setSavingDeposit(false);
+          return;
+        }
+      }
+
+      await updateMyProfessional({
+        depositEnabled: !!depositEnabled,
+        ...(depositEnabled ? { depositAmount: Math.round(Number(amt) || 0) } : {}),
+      });
+
+      setDepositMsgType("success");
+      setDepositMsg("✅ Preferencias de seña actualizadas.");
+    } catch (e) {
+      console.error(e);
+      setDepositMsgType("error");
+      const apiMsg = e?.response?.data?.message || "No se pudo guardar.";
+      setDepositMsg(apiMsg);
+    } finally {
+      setSavingDeposit(false);
+    }
+  };
+
+  // ▶️ NUEVO: guardar Cobros / Datos bancarios
+  const onSavePayout = async () => {
+    setSavingPayout(true);
+    try {
+      const clean = {
+        holderName: payout.holderName.trim(),
+        docType: payout.docType,
+        docNumber: payout.docNumber.trim(),
+        bankName: payout.bankName.trim(),
+        cbu: payout.cbu.replace(/\D/g, ""),
+        alias: payout.alias.trim().toLowerCase(),
+      };
+
+      if (!clean.holderName || !clean.docNumber) {
+        setPayoutMsgType("error");
+        setPayoutMsg("Completá titular y documento.");
+        setSavingPayout(false);
+        return;
+      }
+      if (!clean.cbu && !clean.alias) {
+        setPayoutMsgType("error");
+        setPayoutMsg("Ingresá CBU (22 dígitos) o Alias.");
+        setSavingPayout(false);
+        return;
+      }
+      if (clean.cbu && clean.cbu.length !== 22) {
+        setPayoutMsgType("error");
+        setPayoutMsg("El CBU debe tener 22 dígitos.");
+        setSavingPayout(false);
+        return;
+      }
+
+      await updateMyPayout(clean);
+      setPayoutMsgType("success");
+      setPayoutMsg("✅ Datos bancarios actualizados.");
+    } catch (e) {
+      console.error(e);
+      setPayoutMsgType("error");
+      const apiMsg = e?.response?.data?.message || "No se pudo guardar.";
+      setPayoutMsg(apiMsg);
+    } finally {
+      setSavingPayout(false);
+    }
+  };
+
   const crExpired = useMemo(() => {
     const ex = documents?.criminalRecord?.expiresAt;
     return ex ? new Date(ex).getTime() < Date.now() : false;
@@ -890,7 +1041,7 @@ export default function ProfilePage() {
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
             <button
               onClick={() => setOpenAccount((o) => !o)}
-              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
             >
               <div>
                 <h2 className="text-lg font-semibold">Cuenta</h2>
@@ -1128,7 +1279,7 @@ export default function ProfilePage() {
                         }
                       }}
                       disabled={savingProfile}
-                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60"
+                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
                     >
                       {savingProfile ? "Guardando..." : "Guardar cambios"}
                     </button>
@@ -1138,11 +1289,200 @@ export default function ProfilePage() {
             )}
           </div>
 
+          {/* 💳 RESERVAS Y SEÑA (solo Professional) */}
+          {hasProfessional && (
+            <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <button
+                onClick={() => setOpenDeposit((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+              >
+                <div>
+                  <h2 className="text-lg font-semibold">Reservas y seña</h2>
+                  <p className="text-sm text-gray-500">
+                    Definí si pedís seña y el monto fijo en ARS
+                  </p>
+                </div>
+                <Chevron open={openDeposit} />
+              </button>
+
+              {openDeposit && (
+                <div className="px-5 pb-5 space-y-4">
+                  {depositMsg && (
+                    <div
+                      className={`rounded-lg border px-3 py-2 text-sm ${
+                        depositMsgType === "success"
+                          ? "bg-green-50 border-green-200 text-green-700"
+                          : "bg-red-50 border-red-200 text-red-700"
+                      }`}
+                    >
+                      {depositMsg}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="inline-flex items-center gap-3 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={depositEnabled}
+                        onChange={(e) => setDepositEnabled(e.target.checked)}
+                      />
+                      <span>Requerir seña para reservar</span>
+                    </label>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                      depositEnabled
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-gray-50 text-gray-700 border-gray-200"
+                    }`}>
+                      {depositEnabled ? "Activo" : "Inactivo"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Monto fijo de la seña (ARS)
+                    </label>
+                    <input
+                      type="number"
+                      min={2000}
+                      max={5000}
+                      step={100}
+                      inputMode="numeric"
+                      disabled={!depositEnabled}
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      className={`w-full border rounded-lg px-3 py-2 ${depositEnabled ? "bg-white" : "bg-gray-100 text-gray-500"}`}
+                      placeholder="Ej.: 3000"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Debe estar entre $2.000 y $5.000. Si desactivás la seña, tus clientes podrán reservar sin pasar por pago.
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={onSaveDeposit}
+                      disabled={savingDeposit}
+                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
+                    >
+                      {savingDeposit ? "Guardando…" : "Guardar preferencias"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 💸 COBROS / DATOS BANCARIOS (solo Professional) */}
+          {hasProfessional && (
+            <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <button
+                onClick={() => setOpenPayout((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+              >
+                <div>
+                  <h2 className="text-lg font-semibold">Cobros / Datos bancarios</h2>
+                  <p className="text-sm text-gray-500">Guardá tu CBU o Alias para recibir liquidaciones</p>
+                </div>
+                <Chevron open={openPayout} />
+              </button>
+
+              {openPayout && (
+                <div className="px-5 pb-5 space-y-4">
+                  {payoutMsg && (
+                    <div className={`rounded-lg border px-3 py-2 text-sm ${
+                      payoutMsgType === "success"
+                        ? "bg-green-50 border-green-200 text-green-700"
+                        : "bg-red-50 border-red-200 text-red-700"
+                    }`}>{payoutMsg}</div>
+                  )}
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Titular</label>
+                      <input
+                        value={payout.holderName}
+                        onChange={(e) => setPayout((p) => ({ ...p, holderName: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="Nombre y apellido como figura en el banco"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Tipo de documento</label>
+                      <select
+                        value={payout.docType}
+                        onChange={(e) => setPayout((p) => ({ ...p, docType: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2"
+                      >
+                        <option value="DNI">DNI</option>
+                        <option value="CUIT">CUIT</option>
+                        <option value="CUIL">CUIL</option>
+                        <option value="PAS">PAS</option>
+                        <option value="OTRO">OTRO</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">N° de documento</label>
+                      <input
+                        value={payout.docNumber}
+                        onChange={(e) => setPayout((p) => ({ ...p, docNumber: e.target.value.replace(/\D/g, "") }))}
+                        className="w-full border rounded-lg px-3 py-2"
+                        inputMode="numeric"
+                        placeholder="Solo números"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Banco</label>
+                      <input
+                        value={payout.bankName}
+                        onChange={(e) => setPayout((p) => ({ ...p, bankName: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="Nombre del banco (opcional)"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">CBU (22 dígitos)</label>
+                      <input
+                        value={payout.cbu}
+                        onChange={(e) => setPayout((p) => ({ ...p, cbu: e.target.value.replace(/\D/g, "") }))}
+                        className="w-full border rounded-lg px-3 py-2"
+                        inputMode="numeric"
+                        placeholder="Ej.: 2850590940090418135201"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Alias</label>
+                      <input
+                        value={payout.alias}
+                        onChange={(e) => setPayout((p) => ({ ...p, alias: e.target.value.toLowerCase() }))}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="tu.alias.banco"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Podés completar CBU o Alias.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={onSavePayout}
+                      disabled={savingPayout}
+                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
+                    >
+                      {savingPayout ? "Guardando…" : "Guardar datos bancarios"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* UBICACIÓN */}
           <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
             <button
               onClick={() => setOpenAddress((o) => !o)}
-              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
             >
               <div>
                 <h2 className="text-lg font-semibold pr-40">Buscar dirección</h2>
@@ -1189,7 +1529,7 @@ export default function ProfilePage() {
                 <div className="flex gap-2 mb-4">
                   <button
                     onClick={useGPS}
-                    className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black"
+                    className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black cursor-pointer"
                   >
                     Usar GPS
                   </button>
@@ -1200,7 +1540,7 @@ export default function ProfilePage() {
                       setAllowSuggests(true);
                       setQuery(line);
                     }}
-                    className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
+                    className="px-3 py-2 rounded border bg-white hover:bg-gray-50 cursor-pointer"
                   >
                     Geocodificar campos
                   </button>
@@ -1324,7 +1664,7 @@ export default function ProfilePage() {
                       }
                     }}
                     disabled={savingProfile}
-                    className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white"
+                    className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white cursor-pointer"
                   >
                     {savingProfile ? "Guardando..." : "Guardar ubicación"}
                   </button>
@@ -1338,7 +1678,7 @@ export default function ProfilePage() {
             <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
               <button
                 onClick={() => setOpenDocuments((o) => !o)}
-                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
               >
                 <div>
                   <h2 className="text-lg font-semibold">Documentos</h2>
@@ -1443,8 +1783,10 @@ export default function ProfilePage() {
                           type="date"
                           value={docCrExpiresAt}
                           onChange={(e) => setDocCrExpiresAt(e.target.value)}
-                          className="w-full border rounded-lg px-3 py-2"
+                          onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                          className="w-full border rounded-lg px-3 py-2 cursor-pointer"
                         />
+
                         {documents?.criminalRecord?.expiresAt && (
                           <div className="text-xs text-gray-600 mt-1">
                             Actual:{" "}
@@ -1575,7 +1917,7 @@ export default function ProfilePage() {
             <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
               <button
                 onClick={() => setOpenAvailability((o) => !o)}
-                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50"
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
               >
                 <div>
                   <h2 className="text-lg font-semibold">Disponibilidad</h2>
@@ -1597,70 +1939,123 @@ export default function ProfilePage() {
                         <div className="mt-2 text-sm">{agendaMsg}</div>
                       )}
                       <div className="mt-3 space-y-3">
-                        {DAYS.map((d, idx) => (
-                          <div
-                            key={d.key}
-                            className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl bg-white"
-                          >
-                            <div className="flex items-center gap-3 min-w-[130px]">
-                              <input
-                                id={`day-${d.key}`}
-                                type="checkbox"
-                                checked={rows[idx].active}
-                                onChange={(e) =>
-                                  setRows((a) =>
-                                    a.map((r, i) =>
-                                      i === idx
-                                        ? { ...r, active: e.target.checked }
-                                        : r
-                                    )
-                                  )
-                                }
-                              />
-                              <label htmlFor={`day-${d.key}`}>{d.label}</label>
-                            </div>
-                            <div className="flex items-center gap-3 sm:ml-auto">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-600">De</span>
+                        {DAYS.map((d, idx) => {
+                          const inactive = !rows[idx].active;
+                          return (
+                            <div
+                              key={d.key}
+                              className={`flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl ${
+                                inactive
+                                  ? "bg-gray-50 border-gray-200"
+                                  : "bg-white border-gray-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-[180px]">
                                 <input
-                                  type="time"
-                                  step="900"
-                                  value={rows[idx].from}
-                                  disabled={!rows[idx].active}
+                                  id={`day-${d.key}`}
+                                  type="checkbox"
+                                  checked={rows[idx].active}
                                   onChange={(e) =>
                                     setRows((a) =>
                                       a.map((r, i) =>
                                         i === idx
-                                          ? { ...r, from: e.target.value }
+                                          ? { ...r, active: e.target.checked }
                                           : r
                                       )
                                     )
                                   }
-                                  className="border rounded-lg px-3 py-2 text-sm"
+                                  className="h-5 w-5 cursor-pointer"
+                                  aria-describedby={`day-help-${d.key}`}
                                 />
+                                <label
+                                  htmlFor={`day-${d.key}`}
+                                  className="cursor-pointer select-none"
+                                >
+                                  {d.label}
+                                </label>
+
+                                <span
+                                  className={`text-xs px-2 py-0.5 rounded-full ml-1 ${
+                                    inactive
+                                      ? "bg-gray-200 text-gray-600"
+                                      : "bg-emerald-100 text-emerald-700"
+                                  }`}
+                                >
+                                  {inactive ? "Inactivo" : "Activo"}
+                                </span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-600">a</span>
-                                <input
-                                  type="time"
-                                  step="900"
-                                  value={rows[idx].to}
-                                  disabled={!rows[idx].active}
-                                  onChange={(e) =>
-                                    setRows((a) =>
-                                      a.map((r, i) =>
-                                        i === idx
-                                          ? { ...r, to: e.target.value }
-                                          : r
+
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:ml-auto w-full sm:w-auto">
+                                {inactive ? (
+                                  <p
+                                    id={`day-help-${d.key}`}
+                                    className="text-xs text-gray-500 sm:mr-2"
+                                  >
+                                    🔒 Activa el día para editar los horarios.
+                                  </p>
+                                ) : null}
+
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-gray-600">De</span>
+                                  <input
+                                    type="time"
+                                    step="900"
+                                    value={rows[idx].from}
+                                    disabled={inactive}
+                                    onChange={(e) =>
+                                      setRows((a) =>
+                                        a.map((r, i) =>
+                                          i === idx
+                                            ? { ...r, from: e.target.value }
+                                            : r
+                                        )
                                       )
-                                    )
-                                  }
-                                  className="border rounded-lg px-3 py-2 text-sm"
-                                />
+                                    }
+                                    title={
+                                      inactive
+                                        ? "Activa el día para editar"
+                                        : "Editar hora de inicio"
+                                    }
+                                    className={`border rounded-lg px-3 py-2 text-sm transition ${
+                                      inactive
+                                        ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
+                                        : "bg-white border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-300"
+                                    }`}
+                                  />
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-gray-600">a</span>
+                                  <input
+                                    type="time"
+                                    step="900"
+                                    value={rows[idx].to}
+                                    disabled={inactive}
+                                    onChange={(e) =>
+                                      setRows((a) =>
+                                        a.map((r, i) =>
+                                          i === idx
+                                            ? { ...r, to: e.target.value }
+                                            : r
+                                        )
+                                      )
+                                    }
+                                    title={
+                                      inactive
+                                        ? "Activa el día para editar"
+                                        : "Editar hora de fin"
+                                    }
+                                    className={`border rounded-lg px-3 py-2 text-sm transition ${
+                                      inactive
+                                        ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
+                                        : "bg-white border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-300"
+                                    }`}
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <div className="flex justify-end gap-3 mt-4">
                         <button
@@ -1674,14 +2069,14 @@ export default function ProfilePage() {
                               }))
                             )
                           }
-                          className="px-4 py-2 rounded border"
+                          className="px-4 py-2 rounded border cursor-pointer"
                         >
                           Restablecer
                         </button>
                         <button
                           onClick={onSaveAgenda}
                           disabled={savingAgenda}
-                          className="px-4 py-2 rounded bg-[#0a0e17] text-white"
+                          className="px-4 py-2 rounded bg-[#0a0e17] text-white cursor-pointer"
                         >
                           {savingAgenda ? "Guardando…" : "Guardar agenda"}
                         </button>
