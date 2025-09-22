@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
-import ChatPreviewCard from "../components/chat/ChatPreviewCard";
 import { getProfessionals, getAvailableNowProfessionals } from "../api/professionalService";
 import { getMyBookings } from "../api/bookingService";
 import BookingStatusBadge from "../components/booking/BookingStatusBadge";
@@ -22,7 +21,8 @@ const MAP_KEY = import.meta.env.VITE_MAP_API_KEY;
 
 // Absolutizar assets para avatares
 const ASSET_BASE = API.replace(/\/api\/?$/, "");
-const absUrl = (u) => (!u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`);
+const absUrl = (u) =>
+  !u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`;
 
 // Geocoder MapTiler
 async function geocode(q) {
@@ -41,7 +41,7 @@ async function reverseGeocode(lat, lng) {
   const url = `https://api/maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`.replace(
     "https://api/",
     "https://api."
-  ); // small guard
+  );
   const res = await fetch(url);
   const data = await res.json();
   const f = (data?.features || [])[0];
@@ -52,6 +52,7 @@ const LS_KEY = "suinfi:userdash:filters";
 const RECENT_LIMIT = 2;
 const PAGE_SIZE = 3;
 
+// Helpers
 function normalizeProLoc(p) {
   const g = p?.location?.coordinates;
   if (Array.isArray(g) && g.length === 2 && Number.isFinite(g[0]) && Number.isFinite(g[1])) {
@@ -61,6 +62,259 @@ function normalizeProLoc(p) {
   if (a && Number.isFinite(a.lat) && Number.isFinite(a.lng)) return a;
   return null;
 }
+
+const isValidLinkedinUrl = (u = "") => /^https?:\/\/(www\.)?linkedin\.com\/.+/i.test(String(u || "").trim());
+
+// LinkedIn badge
+function LinkedInBadge({ url, className = "" }) {
+  const ok = isValidLinkedinUrl(url);
+  const base = "inline-flex items-center justify-center h-6 w-6 rounded-lg shadow-sm";
+  const onCls = "bg-[#0A66C2] text-white hover:opacity-90";
+  const offCls = "bg-gray-200 text-gray-400 cursor-not-allowed";
+  const svg = (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5">
+      <path
+        fill="currentColor"
+        d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5zM0 8h5v16H0V8zm7.5 0H12v2.2h.06c.63-1.2 2.18-2.46 4.49-2.46 4.8 0 5.68 3.16 5.68 7.26V24h-5v-6.9c0-1.64-.03-3.75-2.28-3.75-2.28 0-2.63 1.78-2.63 3.63V24h-5V8z"
+      />
+    </svg>
+  );
+  if (!ok) return <span className={`${base} ${offCls} ${className}`} title="LinkedIn no cargado">{svg}</span>;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`${base} ${onCls} ${className}`} title="Ver LinkedIn">
+      {svg}
+    </a>
+  );
+}
+
+// Pill “Disponible”
+const AvailablePill = ({ on = false, className = "" }) => (
+  <span
+    className={
+      `inline-flex items-center gap-1.5 px-2 py-[3px] rounded-full text-[11px] border font-medium select-none ${
+        on ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-600 border-gray-200"
+      } ` + className
+    }
+  >
+    <span className={`inline-block h-1.5 w-1.5 rounded-full ${on ? "bg-emerald-500" : "bg-gray-400"}`} />
+    {on ? "Disponible" : "Offline"}
+  </span>
+);
+
+/* =========
+   Live chip
+   ========= */
+function LiveChip({ p, onClick, onDragClickGuard }) {
+  const name = p?.user?.name || "Profesional";
+  const avatar = p?.user?.avatarUrl ? absUrl(p.user.avatarUrl) : "";
+  const firstService = (p?.services || []).map((s) => s?.name).filter(Boolean)[0] || "Servicio";
+  const linkedIn = p?.linkedinUrl || p?.user?.linkedin || "";
+  return (
+    <button
+      onClick={(e) => {
+        if (onDragClickGuard?.()) return; // si venías arrastrando, bloquea el click
+        onClick?.(e);
+      }}
+      className="group flex items-center gap-3 pr-3 pl-2 h-12 rounded-full bg-white/80 hover:bg-white shadow-sm hover:shadow transition border border-slate-200"
+      title={`Chatear con ${name}`}
+    >
+      <span className="relative h-8 w-8 rounded-full overflow-hidden bg-gray-200 grid place-items-center text-xs font-semibold shrink-0">
+        {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : (name[0] || "P")}
+      </span>
+      <span className="min-w-0 flex flex-col items-start">
+        <span className="text-[13px] font-semibold leading-4 truncate max-w-[140px]">{name}</span>
+        <span className="text-[11px] text-gray-600 truncate max-w-[160px]">{firstService}</span>
+      </span>
+      <span className="hidden sm:inline-flex ml-2"><AvailablePill on /></span>
+      <span className="ml-2"><LinkedInBadge url={linkedIn} /></span>
+    </button>
+  );
+}
+
+/* ====================================================
+   Cinta “Disponibles ahora” — loop sin duplicados reales
+   - Auto-scroll suave
+   - Pausa en hover
+   - Drag con mouse (inercia simple opcional)
+   - Reaparece por la derecha incluso con 1 item
+   ==================================================== */
+function LiveNowRibbon({ pros }) {
+  const navigate = useNavigate();
+
+  // 1) De-duplicate por user._id
+  const items = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(pros) ? pros : []).forEach((p) => {
+      const key = p?.user?._id || p?._id;
+      if (!map.has(key)) map.set(key, p);
+    });
+    return Array.from(map.values());
+  }, [pros]);
+
+  const containerRef = useRef(null);
+  const itemRefs = useRef([]); // refs a cada chip para medir ancho
+  const [widths, setWidths] = useState([]); // ancho de cada chip
+  const [positions, setPositions] = useState([]); // posición X de cada chip
+  const [totalLen, setTotalLen] = useState(0);     // suma anchos + gaps
+  const GAP = 12;
+
+  const [hovered, setHovered] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragData = useRef({ startX: 0, lastX: 0, moved: 0 });
+
+  // medir anchos y posicionar
+  useEffect(() => {
+    itemRefs.current = itemRefs.current.slice(0, items.length);
+    const ws = items.map((_, i) => itemRefs.current[i]?.offsetWidth || 0);
+    setWidths(ws);
+    const pos = [];
+    let acc = 0;
+    for (let i = 0; i < ws.length; i++) {
+      pos.push(acc);
+      acc += ws[i] + GAP;
+    }
+    setPositions(pos);
+    setTotalLen(Math.max(1, acc - GAP)); // largo total sin gap extra al final
+  }, [items]);
+
+  // recalc on resize
+  useEffect(() => {
+    const onResize = () => {
+      const ws = items.map((_, i) => itemRefs.current[i]?.offsetWidth || 0);
+      setWidths(ws);
+      let acc = 0;
+      const pos = [];
+      for (let i = 0; i < ws.length; i++) {
+        pos.push(acc);
+        acc += ws[i] + GAP;
+      }
+      setPositions(pos);
+      setTotalLen(Math.max(1, acc - GAP));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [items]);
+
+  // animación / loop
+  const SPEED = 40; // px/s
+  useEffect(() => {
+    if (items.length === 0 || totalLen === 0) return;
+    let raf;
+    let last = performance.now();
+
+    const tick = (t) => {
+      const dt = (t - last) / 1000;
+      last = t;
+
+      if (!hovered && !dragging) {
+        setPositions((prev) => {
+          const next = prev.map((x, i) => x - SPEED * dt);
+          // si un item salió completamente por la izquierda, lo mando al final
+          for (let i = 0; i < next.length; i++) {
+            const w = widths[i] || 0;
+            if (next[i] + w < 0) {
+              // mover al final: sumo totalLen + GAP
+              next[i] += totalLen + GAP;
+            }
+          }
+          return next;
+        });
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [hovered, dragging, items.length, totalLen, widths]);
+
+  // Drag con mouse
+  const onPointerDown = (e) => {
+    setDragging(true);
+    dragData.current = { startX: e.clientX, lastX: e.clientX, moved: 0 };
+    (e.target.ownerDocument || document).addEventListener("pointermove", onPointerMove);
+    (e.target.ownerDocument || document).addEventListener("pointerup", onPointerUp, { once: true });
+  };
+  const onPointerMove = (e) => {
+    const d = dragData.current;
+    const dx = e.clientX - d.lastX;
+    d.lastX = e.clientX;
+    d.moved += Math.abs(dx);
+    if (!dragging) return;
+    setPositions((prev) => {
+      const next = prev.map((x) => x + dx);
+      // normalizar para que ningún valor explote: si alguno queda muy a la derecha, lo traigo a rango
+      for (let i = 0; i < next.length; i++) {
+        const w = widths[i] || 0;
+        if (next[i] > totalLen) next[i] -= totalLen + GAP;
+        if (next[i] + w < -totalLen) next[i] += totalLen + GAP;
+      }
+      return next;
+    });
+  };
+  const onPointerUp = () => {
+    setDragging(false);
+    (document).removeEventListener("pointermove", onPointerMove);
+  };
+
+  const guardClick = () => dragData.current.moved > 6; // si arrastraste, cancelo click
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl p-6 bg-gradient-to-r from-emerald-50/60 via-white to-sky-50/60">
+        <div className="flex items-center justify-center text-sm text-gray-600">Sin actividad en este momento</div>
+      </div>
+    );
+  }
+
+  const handleSelect = (p) => {
+    const peerId = p?.user?._id;
+    if (peerId) navigate(`/chats/${peerId}`);
+  };
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-white to-slate-50 p-3 select-none"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="flex items-center justify-between px-1 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+          <h3 className="text-lg font-semibold">En vivo · Profesionales conectándose</h3>
+        </div>
+        <span className="text-[12px] text-gray-600">actualización automática</span>
+      </div>
+
+      <div
+        ref={containerRef}
+        className="relative h-[72px] cursor-grab active:cursor-grabbing"
+        onPointerDown={onPointerDown}
+      >
+        {/* Cada chip se posiciona absolutamente con su X calculada */}
+        {items.map((p, i) => {
+          const x = positions[i] ?? 0;
+          return (
+            <div
+              key={p?.user?._id || p?._id}
+              ref={(el) => (itemRefs.current[i] = el)}
+              className="absolute top-1"
+              style={{ transform: `translateX(${x}px)` }}
+            >
+              <LiveChip
+                p={p}
+                onClick={() => handleSelect(p)}
+                onDragClickGuard={guardClick}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
+   Página
+   =========================== */
 
 function UserDashboard() {
   const { user, setUser } = useAuth();
@@ -93,16 +347,9 @@ function UserDashboard() {
   const [loadingRecent, setLoadingRecent] = useState(true);
   const [recentChats, setRecentChats] = useState([]);
 
-  // Disponibles ahora (paginado de a 3)
+  // Disponibles ahora (para la cinta)
   const [onlinePros, setOnlinePros] = useState([]);
   const [loadingOnline, setLoadingOnline] = useState(true);
-  const [onlinePage, setOnlinePage] = useState(1);
-  const ONLINE_PER_PAGE = 3;
-  const onlinePages = Math.max(1, Math.ceil((onlinePros?.length || 0) / ONLINE_PER_PAGE));
-  const onlineSlice = useMemo(() => {
-    const start = (onlinePage - 1) * ONLINE_PER_PAGE;
-    return onlinePros.slice(start, start + ONLINE_PER_PAGE);
-  }, [onlinePros, onlinePage]);
 
   // Persistencia filtros
   useEffect(() => {
@@ -132,9 +379,7 @@ function UserDashboard() {
         setServices(servs.data || []);
       } catch {}
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   const filteredServices = useMemo(() => {
@@ -238,7 +483,9 @@ function UserDashboard() {
       return;
     }
     const a = u?.address || {};
-    const line = [a.street && `${a.street} ${a.number || ""}`, a.city, a.state, a.postalCode, a.country].filter(Boolean).join(", ");
+    const line = [a.street && `${a.street} ${a.number || ""}`, a.city, a.state, a.postalCode, a.country]
+      .filter(Boolean)
+      .join(", ");
     if (!line) return alert("Tu perfil no tiene dirección suficiente. Completala en Mi Perfil o usá GPS.");
     try {
       const [hit] = await geocode(line);
@@ -311,16 +558,13 @@ function UserDashboard() {
         list = Array.isArray(data) ? data : data.items || [];
       }
 
-      // anotación live + distancia
       const annotated = (list || []).map((p) => {
         const fallback = normalizeProLoc(p);
         const userId = p?.user?._id;
         const live = userId ? livePositions.get(userId) : null;
         const loc = live ? { lat: live.lat, lng: live.lng } : fallback;
         const d =
-          origin?.lat != null && loc?.lat != null
-            ? haversineKm(origin, { lat: loc.lat, lng: loc.lng })
-            : null;
+          origin?.lat != null && loc?.lat != null ? haversineKm(origin, { lat: loc.lat, lng: loc.lng }) : null;
         const isOn = typeof live?.isAvailableNow === "boolean" ? live.isAvailableNow : !!p.isAvailableNow;
         return { ...p, _distanceKm: d, _plotLoc: loc, _isOn: isOn };
       });
@@ -349,9 +593,7 @@ function UserDashboard() {
       const live = userId ? livePositions.get(userId) : null;
       const loc = live ? { lat: live.lat, lng: live.lng } : fallback;
       const d =
-        origin?.lat != null && loc?.lat != null
-          ? haversineKm(origin, { lat: loc.lat, lng: loc.lng })
-          : p._distanceKm ?? null;
+        origin?.lat != null && loc?.lat != null ? haversineKm(origin, { lat: loc.lat, lng: loc.lng }) : p._distanceKm ?? null;
       const isOn = typeof live?.isAvailableNow === "boolean" ? live.isAvailableNow : !!p.isAvailableNow;
       return { ...p, _plotLoc: loc, _distanceKm: d, _isOn: isOn };
     });
@@ -377,7 +619,9 @@ function UserDashboard() {
     setLoadingRecent(true);
     try {
       const list = await getMyBookings();
-      const safe = Array.isArray(list) ? list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : [];
+      const safe = Array.isArray(list)
+        ? list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        : [];
       setRecent(safe.slice(0, RECENT_LIMIT));
     } finally {
       setLoadingRecent(false);
@@ -409,7 +653,6 @@ function UserDashboard() {
     try {
       const list = await getAvailableNowProfessionals();
       setOnlinePros(Array.isArray(list) ? list : []);
-      setOnlinePage(1);
     } finally {
       setLoadingOnline(false);
     }
@@ -418,9 +661,7 @@ function UserDashboard() {
     refetchOnline();
   }, []);
 
-  const displayName = (u) => u?.name || u?.email?.split("@")[0] || "Usuario";
-
-  // Marcadores
+  // Marcadores del mapa
   const mapMarkers = useMemo(() => {
     return (allResults || [])
       .map((p) => ({ loc: p?._plotLoc, name: p?.user?.name || "Profesional", isOn: !!p?._isOn }))
@@ -449,16 +690,14 @@ function UserDashboard() {
     return () => navigator.geolocation.clearWatch(id);
   }, [liveOrigin]);
 
-  // --- Helper UI: badge de seña (no rompe si el campo no viene)
+  // Helper UI: badge de seña
   const DepositBadge = ({ p }) => {
     const enabled = !!p?.depositEnabled;
     const amt = Number(p?.depositAmount || 0);
     return (
       <span
         className={`text-[11px] px-2 py-0.5 rounded-full border ${
-          enabled
-            ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-            : "bg-gray-50 text-gray-700 border-gray-200"
+          enabled ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-gray-50 text-gray-700 border-gray-200"
         }`}
         title={enabled ? (amt > 0 ? `Seña requerida: $${amt}` : "Seña requerida") : "No requiere seña"}
       >
@@ -555,9 +794,7 @@ function UserDashboard() {
                 >
                   <option value="">Todas</option>
                   {(categories || []).map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name}
-                    </option>
+                    <option key={c._id} value={c._id}>{c.name}</option>
                   ))}
                 </select>
               </div>
@@ -570,9 +807,7 @@ function UserDashboard() {
                 >
                   <option value="">Todos</option>
                   {(filteredServices || []).map((s) => (
-                    <option key={s._id} value={s._id}>
-                      {s.name}
-                    </option>
+                    <option key={s._id} value={s._id}>{s.name}</option>
                   ))}
                 </select>
               </div>
@@ -580,9 +815,7 @@ function UserDashboard() {
 
             <div className="text-sm text-gray-600">
               {origin?.lat != null ? (
-                <>
-                  Origen: <b>{origin.lat.toFixed(5)}, {origin.lng.toFixed(5)}</b>
-                </>
+                <>Origen: <b>{origin.lat.toFixed(5)}, {origin.lng.toFixed(5)}</b></>
               ) : (
                 <>Elegí una ubicación para ver profesionales cercanos.</>
               )}
@@ -646,22 +879,13 @@ function UserDashboard() {
               const restCount = Math.max(0, servicesNames.length - 1);
               const avatar = p?.user?.avatarUrl ? absUrl(p.user.avatarUrl) : "";
               const initial = (name[0] || "P").toUpperCase();
+              const linkedIn = p?.linkedinUrl || p?.user?.linkedin || "";
 
               return (
-                <div
-                  key={p._id}
-                  className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition"
-                >
+                <div key={p._id} className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
                   <div className="relative h-28 bg-gradient-to-r from-slate-800 to-slate-700">
-                    <span
-                      className={`absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border ${
-                        p._isOn
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-gray-50 text-gray-600 border-gray-200"
-                      }`}
-                    >
-                      {p._isOn ? "Disponible ahora" : "Offline"}
-                    </span>
+                    <AvailablePill on={!!p._isOn} className="absolute top-3 left-3" />
+                    <span className="absolute top-3 right-3"><LinkedInBadge url={linkedIn} /></span>
                     <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white overflow-hidden grid place-items-center text-slate-800 font-bold">
                       {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : initial}
                     </div>
@@ -670,8 +894,10 @@ function UserDashboard() {
                   <div className="pt-8 px-4 pb-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <h3 className="text-base font-semibold leading-5 line-clamp-1">{name}</h3>
-                        <p className="text-xs text-gray-600 line-clamp-1">{email}</p>
+                        <h3 className="text-base font-semibold leading-5 truncate max-w-[240px]">
+                          {name}
+                        </h3>
+                        <p className="text-xs text-gray-600 truncate max-w-[240px]">{email}</p>
                       </div>
                       <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
                         ⭐ {(p?.averageRating || 0).toFixed(1)}{typeof p?.reviews === "number" ? ` (${p.reviews})` : ""}
@@ -679,17 +905,12 @@ function UserDashboard() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                        {firstService}
-                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">{firstService}</span>
                       {restCount > 0 && (
-                        <span className="text-xs px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
-                          +{restCount} más
-                        </span>
+                        <span className="text-xs px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">+{restCount} más</span>
                       )}
                     </div>
 
-                    {/* Documentos + Seña */}
                     <div className="mt-2 flex flex-wrap gap-2">
                       {(() => {
                         const d = p.documents || {};
@@ -716,7 +937,6 @@ function UserDashboard() {
                             >
                               Matrícula: {lic?.url ? "cargada" : "pendiente"}
                             </span>
-                            {/* Badge de seña */}
                             <DepositBadge p={p} />
                           </>
                         );
@@ -753,28 +973,22 @@ function UserDashboard() {
             <button
               disabled={page <= 1}
               onClick={() => goToPage(page - 1)}
-              className={`px-3 py-1 rounded border cursor-pointer ${
-                page <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
-              }`}
+              className={`px-3 py-1 rounded border cursor-pointer ${page <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
             >
               ←
             </button>
-            <span className="text-sm text-gray-700">
-              Página {page} de {pages}
-            </span>
+            <span className="text-sm text-gray-700">Página {page} de {pages}</span>
             <button
               disabled={page >= pages}
               onClick={() => goToPage(page + 1)}
-              className={`px-3 py-1 rounded border cursor-pointer ${
-                page >= pages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
-              }`}
+              className={`px-3 py-1 rounded border cursor-pointer ${page >= pages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
             >
               →
             </button>
           </div>
         )}
 
-        {/* Reservas recientes */}
+        {/* 📋 Reservas recientes */}
         <div className="text-left mb-16">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold">📋 Reservas recientes</h2>
@@ -789,7 +1003,7 @@ function UserDashboard() {
           {loadingRecent ? (
             <p className="text-gray-600">Cargando…</p>
           ) : recent.length === 0 ? (
-            <div className="border rounded-xl p-6 bg-white">
+            <div className="border rounded-2xl p-6 bg-white">
               <p className="text-gray-600 mb-3">Aún no tenés reservas.</p>
               <button
                 onClick={() => navigate("/dashboard/user")}
@@ -808,7 +1022,7 @@ function UserDashboard() {
                 return (
                   <div
                     key={b._id}
-                    className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition"
+                    className="border rounded-2xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition"
                     onClick={() => {
                       const peerId = b?.professional?.user?._id;
                       if (peerId) navigate(`/chats/${peerId}`);
@@ -829,20 +1043,13 @@ function UserDashboard() {
                           {photo ? <img src={photo} alt="avatar" className="h-full w-full object-cover" /> : initial}
                         </div>
                         <div>
-                          <div className="font-semibold leading-5">{name}</div>
+                        <div className="font-semibold leading-5 truncate max-w-[240px]">{name}</div>
                           <div className="text-sm text-gray-700">{b?.service?.name || "Servicio"}</div>
                           <div className="text-sm text-gray-600">{formatDateTime(b?.scheduledAt)}</div>
                         </div>
                       </div>
-                      <div
-                        className="flex items-center gap-2"
-                        onClick={(e) => {
-                          // ⬅️ MUY IMPORTANTE: evita que abrir/cerrar modal dispare el onClick del card (chat)
-                          e.stopPropagation();
-                        }}
-                      >
+                      <div className="flex items-center gap-2" onClick={(e) => { e.stopPropagation(); }}>
                         <BookingStatusBadge status={b?.status} />
-                        {/* Acciones para el cliente: cancelar si aplica */}
                         <BookingActions booking={b} role="client" onChanged={fetchRecent} />
                       </div>
                     </div>
@@ -858,133 +1065,25 @@ function UserDashboard() {
           )}
         </div>
 
-        {/* 🟢 Disponibles ahora */}
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-semibold">🟢 Disponibles ahora</h2>
-              <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
-                {onlinePros.length}
-              </span>
-            </div>
-            {onlinePages > 1 && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setOnlinePage((p) => Math.max(1, p - 1))}
-                  disabled={onlinePage <= 1}
-                  className={`px-2 py-1 rounded border cursor-pointer ${
-                    onlinePage <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
-                  }`}
-                  title="Anterior"
-                >
-                  ←
-                </button>
-                <span className="text-sm text-gray-700">
-                  Página {onlinePage} de {onlinePages}
-                </span>
-                <button
-                  onClick={() => setOnlinePage((p) => Math.min(onlinePages, p + 1))}
-                  disabled={onlinePage >= onlinePages}
-                  className={`px-2 py-1 rounded border cursor-pointer ${
-                    onlinePage >= onlinePages ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
-                  }`}
-                  title="Siguiente"
-                >
-                  →
-                </button>
-              </div>
-            )}
+        {/* 🟢 Disponibles ahora — Cinta moderna */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-2xl font-semibold">🟢 Disponibles ahora</h2>
+            <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+              {onlinePros.length}
+            </span>
           </div>
 
           {loadingOnline ? (
             <p className="text-gray-600">Cargando…</p>
-          ) : onlinePros.length === 0 ? (
-            <p className="text-gray-600">No hay profesionales en línea ahora.</p>
           ) : (
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
-              {onlineSlice.map((p) => {
-                const name = p?.user?.name || "Profesional";
-                const email = p?.user?.email || "";
-                const servicesNames = (p.services || []).map((s) => s?.name).filter(Boolean);
-                const firstService = servicesNames[0] || "Servicio";
-                const restCount = Math.max(0, servicesNames.length - 1);
-                const avatar = p?.user?.avatarUrl ? absUrl(p.user.avatarUrl) : "";
-                const initial = (name[0] || "P").toUpperCase();
-
-                return (
-                  <div
-                    key={p._id}
-                    className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition"
-                  >
-                    <div className="relative h-24 bg-gradient-to-r from-emerald-700 to-emerald-600">
-                      <span className="absolute top-3 left-3 text-[11px] px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
-                        Disponible ahora
-                      </span>
-                      <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white overflow-hidden grid place-items-center text-emerald-700 font-bold">
-                        {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : initial}
-                      </div>
-                    </div>
-                    <div className="pt-8 px-4 pb-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-base font-semibold leading-5 line-clamp-1">{name}</h3>
-                          <p className="text-xs text-gray-600 line-clamp-1">{email}</p>
-                        </div>
-                        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                          ⭐ {p?.averageRating || 4.8}
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                          {firstService}
-                        </span>
-                        {restCount > 0 && (
-                          <span className="text-xs px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
-                            +{restCount} más
-                          </span>
-                        )}
-                      </div>
-                      {/* Seña */}
-                      {/* justo debajo de los chips de documentos */}
-                      <div className="mt-2">
-                        {p?.depositEnabled ? (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
-                            Requiere seña{Number(p?.depositAmount) > 0 ? ` ($${p.depositAmount})` : ""}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
-                            Sin seña
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-4 flex justify-end gap-2">
-                        <button
-                          onClick={() => navigate(`/chats/${p?.user?._id}`)}
-                          className="text-sm font-medium bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
-                        >
-                          Chatear
-                        </button>
-                        <button
-                          onClick={() => navigate(`/professional/${p._id}?reserve=1`)}
-                          className="text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-md shadow-sm cursor-pointer"
-                        >
-                          Reservar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <LiveNowRibbon pros={onlinePros} />
           )}
         </div>
       </div>
 
       {/* Dock de chat */}
-      <ChatDock
-        chats={recentChats}
-        onOpenChat={(peerId) => navigate(`/chats/${peerId}`)}
-      />
+      <ChatDock chats={recentChats} onOpenChat={(peerId) => navigate(`/chats/${peerId}`)} />
     </section>
   );
 }

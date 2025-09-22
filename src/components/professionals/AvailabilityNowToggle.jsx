@@ -1,5 +1,6 @@
 import React, { useState } from "react"
 import { updateAvailabilityNow } from "../api/professionalService"
+import { socket } from "../lib/socket";
 
 export default function AvailabilityNowToggle({ initial = false, onChange }) {
   const [isOn, setIsOn] = useState(Boolean(initial))
@@ -12,6 +13,7 @@ export default function AvailabilityNowToggle({ initial = false, onChange }) {
       const next = !isOn
       setIsOn(next) // optimista
       const res = await updateAvailabilityNow(next) // { message, isAvailableNow }
+      socket.emit("heartbeat"); // ⬅️ marca actividad inmediata
       setMsg(res?.message || (next ? "Ahora estás disponible" : "Disponibilidad desactivada"))
       onChange?.(res?.isAvailableNow ?? next)
     } catch (e) {

@@ -1,7 +1,16 @@
+// src/auth/AuthContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { loginUser, verifyToken, getMyProfile } from "../api/userService";
-import { socket, joinUserRoom, leaveUserRoom } from "../lib/socket";
+import {
+  socket,
+  joinUserRoom,
+  connectSocket,
+  disconnectSocket,
+  startActivityTracking,
+  stopActivityTracking,
+  beat,
+} from "../lib/socket";
 
 const AuthContext = createContext();
 
@@ -28,8 +37,8 @@ function needsOnboarding(user) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [avatarVersion, setAvatarVersion] = useState(0); // ⬅️ nuevo
-  const bumpAvatarVersion = () => setAvatarVersion((v) => v + 1); // ⬅️ nuevo
+  const [avatarVersion, setAvatarVersion] = useState(0);
+  const bumpAvatarVersion = () => setAvatarVersion((v) => v + 1);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -39,11 +48,11 @@ export function AuthProvider({ children }) {
   // --- helper: hidratar user tras auth (login/restore)
   const hydrateUserAfterAuth = async (token, baseUser) => {
     try {
-      const me = await getMyProfile(); // { ...userFull }
+      const me = await getMyProfile();
       return { ...baseUser, ...me };
     } catch {
       try {
-        const vr = await verifyToken(token); // { user }
+        const vr = await verifyToken(token);
         return { ...baseUser, ...(vr?.user || {}) };
       } catch {
         return baseUser;
@@ -60,7 +69,9 @@ export function AuthProvider({ children }) {
     setUser(hydrated);
 
     try {
-      joinUserRoom(hydrated.id || hydrated._id);
+      joinUserRoom(hydrated.id || hydrated._id, res.token);
+      startActivityTracking();
+      beat();
     } catch {}
 
     if (needsOnboarding(hydrated)) {
@@ -72,7 +83,8 @@ export function AuthProvider({ children }) {
   // 2) Logout
   const logout = () => {
     try {
-      leaveUserRoom(user?.id || user?._id);
+      stopActivityTracking();
+      disconnectSocket();
     } catch {}
     setUser(null);
     localStorage.removeItem("token");
@@ -95,7 +107,13 @@ export function AuthProvider({ children }) {
         }
 
         setUser(u);
-        joinUserRoom(u?.id || u?._id);
+
+        // socket + tracking
+        try {
+          joinUserRoom(u?.id || u?._id, token);
+          startActivityTracking();
+          beat();
+        } catch {}
 
         if (needsOnboarding(u) && location.pathname !== "/profile") {
           navigate("/profile", { replace: true });
@@ -111,11 +129,13 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 4) Si el socket se reconecta, volver a unirse a la room
+  // 4) Si el socket se reconecta, volver a unirse + beat
   useEffect(() => {
     const onConnect = () => {
       const uid = user?.id || user?._id;
-      if (uid) joinUserRoom(uid);
+      const token = localStorage.getItem("token") || "";
+      if (uid) joinUserRoom(uid, token);
+      beat();
     };
     socket.on("connect", onConnect);
     return () => {
@@ -130,7 +150,6 @@ export function AuthProvider({ children }) {
     logout,
     loading,
     requiresOnboarding,
-    // ⬇️ nuevos, no rompen nada existente
     avatarVersion,
     bumpAvatarVersion,
   };

@@ -74,7 +74,9 @@ export const getBookingsForMe = async (params = {}) => {
 export const updateBookingStatus = async (id, status, extra = {}) => {
   const body = { status };
   if (extra && typeof extra.note === "string" && extra.note.trim()) {
-    body.note = extra.note.trim(); // el BE puede ignorarla si no la usa
+    const t = extra.note.trim();
+    body.note = t;          // compat actual
+    body.cancelNote = t;    // compat con BE que espera cancelNote
   }
   const { data } = await axiosUser.patch(`${API}/bookings/${id}`, body);
   return data;

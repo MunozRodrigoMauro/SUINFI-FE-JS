@@ -79,7 +79,14 @@ export default function BookingActions({ booking, role = "client", onChanged }) 
         open={cancelOpen}
         onClose={() => setCancelOpen(false)}
         returnFocusRef={triggerRef}
-        onConfirm={(note) => doSet("canceled", note ? { note } : {})}
+        onConfirm={(reason) =>
+          doSet(
+            "canceled",                                    // <- el controller espera "canceled"
+            reason?.trim()
+              ? { note: reason.trim(), cancelNote: reason.trim() } // compat BE
+              : {}
+          )
+           }
         title="Cancelar reserva"
         subtitle="Podés agregar un breve motivo (se verá en la reserva)."
       />

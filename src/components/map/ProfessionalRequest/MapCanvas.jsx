@@ -37,7 +37,12 @@ export default function MapCanvas({
       center: [center.lng, center.lat],
       zoom,
       cooperativeGestures: true,
+      // 👉 dejamos la atribución siempre compacta (solo “i”)
+      attributionControl: false,
     });
+
+    // barra compacta con “i”
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
     map.dragPan.enable();
     map.touchZoomRotate.enable();
@@ -209,11 +214,39 @@ export default function MapCanvas({
       });
   }, [markers]);
 
+  // zoom handlers
+  const zoomIn = () => mapRef.current && mapRef.current.zoomIn();
+  const zoomOut = () => mapRef.current && mapRef.current.zoomOut();
+
   return (
-    <div
-      ref={containerRef}
-      className="w-full rounded-xl border"
-      style={{ height: 420, overflow: "hidden" }}
-    />
+    <div className="relative">
+      <div
+        ref={containerRef}
+        className="w-full rounded-xl border"
+        style={{ height: 420, overflow: "hidden" }}
+      />
+
+      {/* Controles + y − pequeños y estéticos */}
+      <div className="pointer-events-none absolute top-2 right-2 flex flex-col gap-1.5">
+        <button
+          type="button"
+          aria-label="Acercar"
+          onClick={zoomIn}
+          className="pointer-events-auto w-9 h-9 md:w-8 md:h-8 rounded-lg bg-white/95 backdrop-blur border shadow hover:bg-white active:scale-95 text-base font-semibold"
+          title="Acercar"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          aria-label="Alejar"
+          onClick={zoomOut}
+          className="pointer-events-auto w-9 h-9 md:w-8 md:h-8 rounded-lg bg-white/95 backdrop-blur border shadow hover:bg-white active:scale-95 text-base font-semibold"
+          title="Alejar"
+        >
+          −
+        </button>
+      </div>
+    </div>
   );
 }

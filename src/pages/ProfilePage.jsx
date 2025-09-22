@@ -146,6 +146,10 @@ function pickFromE164(e164) {
   return { iso: best.iso, dial: best.dial, local: num.slice(bestLen) };
 }
 
+// ───────── LinkedIn
+const isValidLinkedinUrl = (u = "") =>
+  /^https?:\/\/(www\.)?linkedin\.com\/.+/i.test(String(u).trim());
+
 // ───────── Country dropdown (igual)
 function usePortal() {
   const elRef = React.useRef(null);
@@ -399,6 +403,13 @@ export default function ProfilePage() {
   const [payoutMsg, setPayoutMsg] = useState("");
   const [payoutMsgType, setPayoutMsgType] = useState("success");
 
+  // ───────── LinkedIn (solo Professional)
+  const [openLinkedin, setOpenLinkedin] = useState(false);
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [savingLinkedin, setSavingLinkedin] = useState(false);
+  const [linkedinMsg, setLinkedinMsg] = useState("");
+  const [linkedinMsgType, setLinkedinMsgType] = useState("success");
+
   const refreshDocs = async () => {
     try {
       const mine = await getMyProfessional();
@@ -535,6 +546,9 @@ export default function ProfilePage() {
           );
         }
 
+        // LinkedIn: valor actual
+        setLinkedinUrl(mine?.linkedinUrl || "");
+
         // Cobros / Payout: cargar datos actuales
         if (mine?.payout) {
           setPayout({
@@ -593,6 +607,13 @@ export default function ProfilePage() {
     const t = setTimeout(() => setPayoutMsg(""), 2500);
     return () => clearTimeout(t);
   }, [payoutMsg]);
+
+  // ▶️ NUEVO: limpiar mensajes LinkedIn
+  useEffect(() => {
+    if (!linkedinMsg) return;
+    const t = setTimeout(() => setLinkedinMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [linkedinMsg]);
 
   const onChangeQuery = (e) => {
     setAllowSuggests(true);
@@ -931,6 +952,30 @@ export default function ProfilePage() {
     }
   };
 
+  // ▶️ NUEVO: guardar LinkedIn
+  const onSaveLinkedin = async () => {
+    setSavingLinkedin(true);
+    try {
+      const clean = (linkedinUrl || "").trim();
+      if (clean && !isValidLinkedinUrl(clean)) {
+        setLinkedinMsgType("error");
+        setLinkedinMsg("Ingresá una URL válida de LinkedIn (debe comenzar con https://www.linkedin.com/...)");
+        setSavingLinkedin(false);
+        return;
+      }
+      await updateMyProfessional({
+        linkedinUrl: clean || "", // vacío = quitar
+      });
+      setLinkedinMsgType("success");
+      setLinkedinMsg(clean ? "✅ LinkedIn actualizado." : "✅ LinkedIn eliminado.");
+    } catch (e) {
+      setLinkedinMsgType("error");
+      setLinkedinMsg("No se pudo guardar tu LinkedIn.");
+    } finally {
+      setSavingLinkedin(false);
+    }
+  };
+
   const crExpired = useMemo(() => {
     const ex = documents?.criminalRecord?.expiresAt;
     return ex ? new Date(ex).getTime() < Date.now() : false;
@@ -1114,16 +1159,27 @@ export default function ProfilePage() {
 
                   {/* Nombre / email / rol */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Nombre
-                    </label>
-                    <input
-                      name="name"
-                      value={form.name}
-                      onChange={onChange}
-                      className="w-full border rounded-lg px-4 py-2"
-                      placeholder="Tu nombre completo"
-                    />
+                  <input
+                    name="name"
+                    value={form.name}
+                    onChange={onChange}
+                    onBlur={() =>
+                      setForm(f => ({
+                        ...f,
+                        name: f.name
+                          .trim()
+                          .toLowerCase()
+                          .replace(/\s+/g, " ")
+                          .split(" ")
+                          .map(w => w.charAt(0).toLocaleUpperCase("es-AR") + w.slice(1))
+                          .join(" ")
+                          .slice(0, 50)
+                      }))
+                    }
+                    maxLength={50}
+                    className="w-full border rounded-lg px-4 py-2"
+                    placeholder="Tu nombre completo"
+                  />
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
@@ -1471,6 +1527,65 @@ export default function ProfilePage() {
                       className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
                     >
                       {savingPayout ? "Guardando…" : "Guardar datos bancarios"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 🔗 LINKEDIN (solo Professional) */}
+          {hasProfessional && (
+            <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <button
+                onClick={() => setOpenLinkedin((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+              >
+                <div>
+                  <h2 className="text-lg font-semibold">LinkedIn</h2>
+                  <p className="text-sm text-gray-500">
+                    Guardá el enlace a tu perfil de LinkedIn (se usa en las cards)
+                  </p>
+                </div>
+                <Chevron open={openLinkedin} />
+              </button>
+
+              {openLinkedin && (
+                <div className="px-5 pb-5 space-y-4">
+                  {linkedinMsg && (
+                    <div
+                      className={`rounded-lg border px-3 py-2 text-sm ${
+                        linkedinMsgType === "success"
+                          ? "bg-green-50 border-green-200 text-green-700"
+                          : "bg-red-50 border-red-200 text-red-700"
+                      }`}
+                    >
+                      {linkedinMsg}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      URL de LinkedIn
+                    </label>
+                    <input
+                      value={linkedinUrl}
+                      onChange={(e) => setLinkedinUrl(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2"
+                      placeholder="https://www.linkedin.com/in/tu-usuario"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Debe comenzar con <code>https://www.linkedin.com/</code>. Si dejás vacío, se quitará el ícono.
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={onSaveLinkedin}
+                      disabled={savingLinkedin}
+                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
+                    >
+                      {savingLinkedin ? "Guardando…" : "Guardar LinkedIn"}
                     </button>
                   </div>
                 </div>

@@ -5,6 +5,7 @@ import {
   updateAvailabilitySchedule,
   getProfessionals,
 } from "../api/professionalService"
+import { socket } from "../lib/socket";
 
 // Claves en español para coincidir con tu backend/seed
 const DAYS = [
@@ -148,6 +149,7 @@ export default function ProfessionalAvailabilityPage() {
     try {
       setSaving(true)
       const res = await updateAvailabilitySchedule(schedule)
+      socket.emit("heartbeat");
       setMsg("✅ Agenda guardada correctamente.")
       // sincronizamos UI con lo que devolvió el backend
       if (res?.availabilitySchedule && typeof res.availabilitySchedule === "object") {
