@@ -29,7 +29,6 @@ import {
   getMyProfessional,
   uploadProfessionalDoc,
   deleteProfessionalDoc,
-  // ▶️ NUEVO:
   getMyPayout,
   updateMyPayout,
 } from "../api/professionalService";
@@ -150,7 +149,7 @@ function pickFromE164(e164) {
 const isValidLinkedinUrl = (u = "") =>
   /^https?:\/\/(www\.)?linkedin\.com\/.+/i.test(String(u).trim());
 
-// ───────── Country dropdown (igual)
+// ───────── Country dropdown
 function usePortal() {
   const elRef = React.useRef(null);
   if (!elRef.current) {
@@ -277,7 +276,44 @@ function CountryDropdown({ open, anchorRef, valueISO, onSelect, onClose }) {
   );
 }
 
-// ───────── Map + geocode helpers
+/* ──────────────────────────────────────────────────────────
+   Geocoding helpers (MEJORADOS): devuelven feature + addr
+   MapTiler (estilo Mapbox) → usamos context para armar campos
+────────────────────────────────────────────────────────── */
+function extractAddrFromFeature(f) {
+  const ctx = Array.isArray(f?.context) ? f.context : [];
+  const by = (prefix) =>
+    ctx.find((c) => String(c?.id || "").startsWith(prefix + ".")) || {};
+  const country =
+    by("country")?.text || f?.properties?.country || f?.place_name?.split(",").pop()?.trim() || "";
+  const state =
+    by("region")?.text || by("state")?.text || f?.properties?.region || "";
+  const city =
+    by("place")?.text ||
+    by("locality")?.text ||
+    by("district")?.text ||
+    f?.properties?.place ||
+    "";
+  const postalCode =
+    by("postcode")?.text ||
+    f?.properties?.postcode ||
+    f?.properties?.postalcode ||
+    "";
+
+  // En features tipo "address": text = calle, address = número
+  const street = f?.text || f?.properties?.street || "";
+  const number = String(f?.address || f?.properties?.housenumber || "").replace(/[()]/g, "").trim();
+
+  return {
+    country,
+    state,
+    city,
+    street,
+    number,
+    postalCode,
+  };
+}
+
 async function geocode(q) {
   if (!q?.trim()) return [];
   const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(
@@ -290,15 +326,25 @@ async function geocode(q) {
     label: f.place_name || f.text,
     lat: f.center?.[1],
     lng: f.center?.[0],
+    feature: f,
+    addr: extractAddrFromFeature(f),
   }));
 }
 
-async function reverseGeocode(lat, lng) {
+async function reverseGeocodeFull(lat, lng) {
   const u = `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${MAP_KEY}&language=es`;
   const res = await fetch(u);
   const data = await res.json();
   const f = (data?.features || [])[0];
-  return f ? f.place_name || f.text : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  if (!f) {
+    const label = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    return { label, addr: {}, feature: null };
+  }
+  return {
+    label: f.place_name || f.text,
+    addr: extractAddrFromFeature(f),
+    feature: f,
+  };
 }
 
 // ── wrappers FE → BE
@@ -309,7 +355,7 @@ const patchProWhatsapp = ({ number, visible, nationality }) =>
   updateMyWhatsappPro({ number, visible, nationality });
 
 export default function ProfilePage() {
-  const { setUser, bumpAvatarVersion } = useAuth();
+  const { user, setUser, bumpAvatarVersion } = useAuth();
   const navigate = useNavigate();
 
   const [hasProfessional, setHasProfessional] = useState(false);
@@ -536,7 +582,7 @@ export default function ProfilePage() {
           setWaVisible(!!meWa.visible);
         }
 
-        // Depósito/Seña: valores actuales
+        // Depósito/Seña
         if (mine) {
           setDepositEnabled(!!mine.depositEnabled);
           setDepositAmount(
@@ -546,10 +592,10 @@ export default function ProfilePage() {
           );
         }
 
-        // LinkedIn: valor actual
+        // LinkedIn
         setLinkedinUrl(mine?.linkedinUrl || "");
 
-        // Cobros / Payout: cargar datos actuales
+        // Cobros / Payout
         if (mine?.payout) {
           setPayout({
             holderName: mine.payout.holderName || "",
@@ -601,14 +647,11 @@ export default function ProfilePage() {
     const t = setTimeout(() => setDepositMsg(""), 2500);
     return () => clearTimeout(t);
   }, [depositMsg]);
-  // ▶️ NUEVO: limpiar mensajes payout
   useEffect(() => {
     if (!payoutMsg) return;
     const t = setTimeout(() => setPayoutMsg(""), 2500);
     return () => clearTimeout(t);
   }, [payoutMsg]);
-
-  // ▶️ NUEVO: limpiar mensajes LinkedIn
   useEffect(() => {
     if (!linkedinMsg) return;
     const t = setTimeout(() => setLinkedinMsg(""), 2500);
@@ -636,12 +679,26 @@ export default function ProfilePage() {
     }, 300);
   }, [query, isFocused, allowSuggests]);
 
+  // 🔥 setea coords + label + autocompleta campos SIEMPRE
+  const applyGeoResult = useCallback((res) => {
+    if (!res) return;
+    const { label: lbl, addr: a, feature } = res;
+    setLabel(lbl || "");
+    setQuery(lbl || "");
+    setCoords({
+      lat: feature?.center?.[1] ?? coords?.lat ?? null,
+      lng: feature?.center?.[0] ?? coords?.lng ?? null,
+    });
+    setAddr((prev) => ({
+      ...prev,
+      ...(a || {}),
+    }));
+  }, [coords?.lat, coords?.lng]);
+
   const pickSuggestion = (s) => {
-    setQuery(s.label);
-    setLabel(s.label);
-    setCoords({ lat: s.lat, lng: s.lng });
     setSuggests([]);
     setAllowSuggests(false);
+    applyGeoResult(s);
   };
 
   const onChange = (e) =>
@@ -649,20 +706,33 @@ export default function ProfilePage() {
   const onChangeAddr = (e) =>
     setAddr((a) => ({ ...a, [e.target.name]: e.target.value }));
 
-  const useGPS = () => {
+  const useGPS = async () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setCoords(c);
-        const q = `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
-        setQuery(q);
-        setLabel(q);
-        setSuggests([]);
-        setAllowSuggests(false);
+        try {
+          const res = await reverseGeocodeFull(c.lat, c.lng);
+          applyGeoResult({ ...res, feature: { center: [c.lng, c.lat] } });
+        } catch {
+          const q = `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
+          setLabel(q);
+          setQuery(q);
+        }
       },
       () => {}
     );
+  };
+
+  // Geocodificar campos escritos → autocompletar + centrar mapa
+  const geocodeFromFields = async () => {
+    const line = buildAddressLabel(addr);
+    if (!line.trim()) return;
+    try {
+      const list = await geocode(line);
+      if (list[0]) pickSuggestion(list[0]);
+    } catch {}
   };
 
   // ✅ essentialsOk
@@ -876,7 +946,6 @@ export default function ProfilePage() {
     setSavingDeposit(true);
     try {
       const amt = String(depositAmount).trim();
-      // límites ARS
       const MIN = 2000;
       const MAX = 5000;
 
@@ -1036,6 +1105,51 @@ export default function ProfilePage() {
     }
   };
 
+  // ── FLAGS y progreso de perfil
+  const role = (form.role || user?.role || "").toLowerCase();
+  const isAdmin = role === "admin";
+  const isProfessional = role === "professional";
+  const hasName = form.name.trim().length >= 2;
+  const hasAddr =
+    !!addr.country && !!addr.state && !!addr.city && !!addr.street && !!addr.number && !!addr.postalCode;
+
+  const hasPhoto = !!avatarPreview;
+  const waOk = (() => {
+    const digits = (waNumber || "").replace(/\D/g, "");
+    if (!waVisible || digits.length === 0) return false;
+    return !!tryNormalizeWa(waISO, waCountry.dial, waNumber);
+  })();
+
+  // extras sólo para profesionales (opcionales pero suben %)
+  const hasSchedule = !hasProfessional || rows.some(r => r.active);
+  const hasAnyDoc = !!(documents?.criminalRecord?.url || documents?.license?.url);
+  const hasLinkedin = hasProfessional && (() => {
+    const u = (linkedinUrl || "").trim();
+    return u && isValidLinkedinUrl(u);
+  })();
+
+  // items de checklist (los 2 primeros son “esenciales”)
+  const completionItems = [
+    { key: "name", label: "Nombre", done: hasName, essential: true },
+    { key: "addr", label: "Dirección completa", done: hasAddr, essential: true },
+    { key: "photo", label: "Foto de perfil", done: hasPhoto },
+    { key: "wa", label: "WhatsApp visible", done: waOk },
+    ...(hasProfessional
+      ? [
+          { key: "sched", label: "Agenda con al menos 1 día activo", done: hasSchedule },
+          { key: "docs", label: "Documentos cargados", done: hasAnyDoc },
+          { key: "linkedin", label: "LinkedIn", done: hasLinkedin },
+        ]
+      : [])
+  ];
+
+  const doneCount = completionItems.filter(i => i.done).length;
+  const totalCount = completionItems.length;
+  const completionPct = Math.round((doneCount / Math.max(1, totalCount)) * 100);
+
+  // habilitación del botón “Ir a mi panel”
+  const allowPanel = isAdmin || (hasName && hasAddr);
+
   if (loadingProfile)
     return <p className="text-center mt-28">Cargando tu perfil...</p>;
   const headerInitial = (form.name?.[0] || "U").toUpperCase();
@@ -1046,13 +1160,76 @@ export default function ProfilePage() {
       <BackBar
         title="Mi perfil"
         subtitle={
-          hasProfessional
-            ? "Editá tu cuenta, foto, ubicación, documentos y disponibilidad"
-            : "Editá tu cuenta, foto y ubicación"
+          isAdmin ? (
+            "Administrás la plataforma"
+          ) : isProfessional ? (
+            <>
+              <span className="font-semibold">Completá tus datos</span>
+              <span className="mx-1">·</span>
+              <span>Mientras más datos completes, más posibilidades hay de que <b>te contraten</b>.</span>
+            </>
+          ) : (
+            <>
+              <span className="font-semibold">Completá tus datos</span>
+              <span className="mx-1">·</span>
+              <span>Mientras más datos completes, mejores opciones vas a tener para <b>contratar</b>.</span>
+            </>
+          )
         }
       />
+      <div className="h-12 md:h-16" aria-hidden />
+      {!isAdmin && (
+        <div className="bg-white px-4">
+          <div className="max-w-3xl mx-auto mt-4 md:mt-6">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100">⚡</span>
+                  <div>
+                    <div className="font-medium text-amber-900">
+                      Perfil {completionPct}% completo
+                    </div>
+                    {!allowPanel && (
+                      <div className="text-xs text-amber-800">
+                        Completá <b>Nombre</b> y <b>Dirección</b> para habilitar tu panel.
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-      <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-24 px-4">
+                <div className="hidden sm:block w-40">
+                  <div className="h-2 rounded-full bg-white/60 overflow-hidden border border-amber-200">
+                    <div
+                      className="h-full bg-amber-500"
+                      style={{ width: `${completionPct}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* checklist compacto */}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {completionItems.map(it => (
+                  <span
+                    key={it.key}
+                    className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border
+                      ${it.done
+                        ? "bg-white border-emerald-200 text-emerald-700"
+                        : "bg-white border-amber-200 text-amber-800"}`}
+                    title={it.essential ? "Requisito para habilitar el panel" : "Suma confianza"}
+                  >
+                    {it.done ? "✔" : "•"} {it.label}
+                    {it.essential && <span className="ml-1 text-[10px] opacity-70">(obligatorio)</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* padding top real para despegar del navbar fijo */}
+      <section className="min-h-screen bg-white text-[#0a0e17] pt-5 md:pt-5 pb-24 px-4">
         <div className="max-w-3xl mx-auto">
           {/* Encabezado */}
           <div className="flex items-center gap-3 mb-4">
@@ -1159,27 +1336,27 @@ export default function ProfilePage() {
 
                   {/* Nombre / email / rol */}
                   <div>
-                  <input
-                    name="name"
-                    value={form.name}
-                    onChange={onChange}
-                    onBlur={() =>
-                      setForm(f => ({
-                        ...f,
-                        name: f.name
-                          .trim()
-                          .toLowerCase()
-                          .replace(/\s+/g, " ")
-                          .split(" ")
-                          .map(w => w.charAt(0).toLocaleUpperCase("es-AR") + w.slice(1))
-                          .join(" ")
-                          .slice(0, 50)
-                      }))
-                    }
-                    maxLength={50}
-                    className="w-full border rounded-lg px-4 py-2"
-                    placeholder="Tu nombre completo"
-                  />
+                    <input
+                      name="name"
+                      value={form.name}
+                      onChange={onChange}
+                      onBlur={() =>
+                        setForm(f => ({
+                          ...f,
+                          name: f.name
+                            .trim()
+                            .toLowerCase()
+                            .replace(/\s+/g, " ")
+                            .split(" ")
+                            .map(w => w.charAt(0).toLocaleUpperCase("es-AR") + w.slice(1))
+                            .join(" ")
+                            .slice(0, 50)
+                        }))
+                      }
+                      maxLength={50}
+                      className="w-full border rounded-lg px-4 py-2"
+                      placeholder="Tu nombre completo"
+                    />
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
@@ -1649,12 +1826,7 @@ export default function ProfilePage() {
                     Usar GPS
                   </button>
                   <button
-                    onClick={() => {
-                      const line = buildAddressLabel(addr);
-                      if (!line) return;
-                      setAllowSuggests(true);
-                      setQuery(line);
-                    }}
+                    onClick={geocodeFromFields}
                     className="px-3 py-2 rounded border bg-white hover:bg-gray-50 cursor-pointer"
                   >
                     Geocodificar campos
@@ -1758,9 +1930,14 @@ export default function ProfilePage() {
                       draggableOrigin
                       onOriginDragEnd={async ({ lat, lng }) => {
                         setCoords({ lat, lng });
-                        const nice = await reverseGeocode(lat, lng);
-                        setLabel(nice);
-                        setQuery(nice);
+                        try {
+                          const res = await reverseGeocodeFull(lat, lng);
+                          applyGeoResult({ ...res, feature: { center: [lng, lat] } });
+                        } catch {
+                          const nice = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                          setLabel(nice);
+                          setQuery(nice);
+                        }
                         setAllowSuggests(false);
                         setSuggests([]);
                       }}
@@ -2205,10 +2382,11 @@ export default function ProfilePage() {
 
           <div className="mt-8 flex justify-end">
             <button
-              onClick={() => navigate("/dashboard/professional")}
-              disabled={!essentialsOk}
+              onClick={() => navigate(hasProfessional ? "/dashboard/professional" : "/dashboard/user")}
+              disabled={!allowPanel}
+              title={allowPanel ? "Abrir panel" : "Completá Nombre y Dirección para habilitar el panel"}
               className={`px-5 py-2 rounded-lg ${
-                essentialsOk
+                allowPanel
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white"
                   : "bg-gray-200 text-gray-500 cursor-not-allowed"
               }`}

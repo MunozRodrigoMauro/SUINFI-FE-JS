@@ -42,26 +42,90 @@ async function createDepositPreferenceFE(bookingId) {
   return data;
 }
 
-/** Devuelve {dateStr:"YYYY-MM-DD", timeStr:"HH:mm"} o null */
+// ——— LinkedIn helpers (igual al de las cards)
+const isValidLinkedinUrl = (u = "") =>
+  /^https?:\/\/(www\.)?linkedin\.com\/.+/i.test(String(u || "").trim());
+
+function LinkedInBadge({ url, className = "" }) {
+  const ok = isValidLinkedinUrl(url);
+  const base = "inline-flex items-center justify-center h-6 w-6 rounded-lg shadow-sm";
+  const onCls = "bg-[#0A66C2] text-white hover:opacity-90";
+  const offCls = "bg-gray-200 text-gray-400 cursor-not-allowed";
+  const svg = (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5">
+      <path
+        fill="currentColor"
+        d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5zM0 8h5v16H0V8zm7.5 0H12v2.2h.06c.63-1.2 2.18-2.46 4.49-2.46 4.8 0 5.68 3.16 5.68 7.26V24h-5v-6.9c0-1.64-.03-3.75-2.28-3.75-2.28 0-2.63 1.78-2.63 3.63V24h-5V8z"
+      />
+    </svg>
+  );
+  if (!ok) return <span className={`${base} ${offCls} ${className}`} title="LinkedIn no cargado">{svg}</span>;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className={`${base} ${onCls} ${className}`}
+      title="Ver LinkedIn"
+    >
+      {svg}
+    </a>
+  );
+}
+
+// ——— Pill “Seña”
+const DepositBadge = ({ enabled = false, amount = 0, className = "" }) => {
+  const amt = Number(amount || 0);
+  return (
+    <span
+      className={`text-[11px] px-2 py-0.5 rounded-full border ${
+        enabled ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-gray-50 text-gray-700 border-gray-200"
+      } ${className}`}
+      title={enabled ? (amt > 0 ? `Seña requerida: $${amt}` : "Seña requerida") : "No requiere seña"}
+    >
+      {enabled ? (amt > 0 ? `Seña requerida · $${amt}` : "Seña requerida") : "Sin seña"}
+    </span>
+  );
+};
+
+
+/** Devuelve {dateStr:"YYYY-MM-DD", timeStr:"HH:mm"} o null (usa HORA LOCAL) */
 function findNextAvailableSlot(professional, stepMin = 30, horizonDays = 14) {
   const now = new Date();
   for (let i = 0; i < horizonDays; i++) {
     const d = new Date(now);
     d.setDate(now.getDate() + i);
-    const dateStr = d.toISOString().slice(0, 10);
+
+    // ✅ fecha local, NO UTC
+    const dateStr = [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, "0"),
+      String(d.getDate()).padStart(2, "0"),
+    ].join("-");
+
     const dow = d.getDay();
     const key = DAYS_ES[dow];
 
-    const sch =
-      professional?.availabilitySchedule?.[key] ||
-      (i === 0 ? { from: "09:00", to: "18:00" } : null);
-
-    if (!sch || !sch.from || !sch.to) continue;
+    // Si no hay agenda cargada, para HOY permitimos “desde ahora” si el pro está online;
+    // si no, por defecto 09–18 (como antes).
+    let sch = professional?.availabilitySchedule?.[key] || null;
+    if (!sch) {
+      if (i === 0 && professional?.isAvailableNow) {
+        const fromNow = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        sch = { from: fromNow, to: "23:59" };
+      } else if (i === 0) {
+        sch = { from: "09:00", to: "18:00" };
+      } else {
+        continue;
+      }
+    }
 
     const fromMin = hhmmToMin(sch.from);
     const toMin = hhmmToMin(sch.to);
 
-    const startMinToday = roundUp(d.getHours() * 60 + d.getMinutes(), stepMin);
+    const currentMin = d.getHours() * 60 + d.getMinutes();
+    const startMinToday = roundUp(currentMin, stepMin);
     const startMin = i === 0 ? Math.max(fromMin, startMinToday) : fromMin;
 
     if (startMin <= toMin) {
@@ -70,6 +134,14 @@ function findNextAvailableSlot(professional, stepMin = 30, horizonDays = 14) {
   }
   return null;
 }
+
+// Poné este helper arriba del componente ReserveModal (o al inicio del archivo)
+const formatLocalDate = (yyyyMmDd) => {
+  const [y, m, d] = String(yyyyMmDd).split("-").map(Number);
+  const dt = new Date(y, m - 1, d); // fecha local
+  return dt.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
+};
+
 
 function ReserveModal({ open, onClose, professional, onCreated, services = [], returnFocusRef }) {
   const [serviceId, setServiceId] = useState("");
@@ -263,10 +335,20 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [], r
         return;
       }
       const slot = findNextAvailableSlot(professional);
-      if (!slot) {
-        setMsg("No hay disponibilidad inmediata. Probá eligiendo fecha y hora.");
-        setSavingInstant(false);
-        return;
+      if (professional?.isAvailableNow) {
+           const now = new Date();
+           const dateStr = [
+             now.getFullYear(),
+             String(now.getMonth() + 1).padStart(2, "0"),
+             String(now.getDate()).padStart(2, "0"),
+           ].join("-");
+           const minutes = now.getHours() * 60 + now.getMinutes();
+           const step = 30;
+           const rounded = Math.ceil(minutes / step) * step;
+           const hh = String(Math.floor(rounded / 60)).padStart(2, "0");
+           const mm = String(rounded % 60).padStart(2, "0");
+           slot.dateStr = dateStr;
+           slot.timeStr = `${hh}:${mm}`;
       }
 
       if (!professional?.depositEnabled) {
@@ -299,155 +381,169 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [], r
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 bg-black/40"
       role="dialog"
       aria-modal="true"
       aria-label="Reservar"
     >
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
-        {/* Header */}
-        <div className="px-5 py-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Reservar</h3>
-          <button
-            onClick={handleClose}
-            className="text-gray-500 hover:text-black cursor-pointer"
-            aria-label="Cerrar modal"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* A) Bloque Reserva rápida */}
-        <div className="px-5 pt-4">
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-start gap-2">
-              <span className="text-lg leading-6">⚡</span>
-              <div className="leading-tight">
-                <div className="font-medium text-emerald-900">Reserva rápida</div>
-                <div className="text-xs text-emerald-800">
-                  Próximo turno:&nbsp;
-                  {nextSlot ? (
-                    <b>
-                      {new Date(nextSlot.dateStr + "T00:00:00").toLocaleDateString()} {nextSlot.timeStr}hs
-                    </b>
-                  ) : (
-                    <span>No disponible</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
+      <div className="flex min-h-full items-end sm:items-center justify-center sm:p-4">
+        <div className="w-full h-[100dvh] sm:h-auto sm:max-w-md bg-white sm:rounded-2xl shadow-xl overflow-hidden">
+          {/* Header (sticky en mobile) */}
+          <div className="px-4 sm:px-5 py-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+            <h3 className="text-lg font-semibold">Reservar</h3>
             <button
-              type="button"
-              onClick={submitInstant}
-              disabled={savingInstant || !hasServices}
-              className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto px-3 py-2 rounded-lg text-white whitespace-nowrap cursor-pointer ${
-                savingInstant || !hasServices
-                  ? "bg-emerald-400/60 cursor-not-allowed"
-                  : "bg-emerald-600 hover:bg-emerald-700"
-              }`}
-              title="Crear reserva con el próximo turno disponible"
-            >
-              <span>{savingInstant ? "Reservando…" : "Reservar ahora"}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Separador visual */}
-        <div className="px-5 py-3">
-          <div className="flex items-center gap-3">
-            <div className="h-px bg-gray-200 flex-1" />
-            <span className="text-[10px] uppercase tracking-wide text-gray-500 select-none">
-              o programá tu turno
-            </span>
-            <div className="h-px bg-gray-200 flex-1" />
-          </div>
-        </div>
-
-        {/* B) Bloque Reserva programada */}
-        <form onSubmit={submit} className="p-5 space-y-4">
-          {msg && (
-            <div className="text-sm bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded-lg">
-              {msg}
-            </div>
-          )}
-
-          {/* Título de sección */}
-          <div className="flex items-center gap-2 -mb-1">
-            <span className="text-lg">📅</span>
-            <h4 className="text-sm font-semibold text-gray-900">Reserva programada</h4>
-          </div>
-
-          {/* Servicio */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Servicio</label>
-            {hasServices ? (
-              <select
-                ref={selectRef}
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2"
-              >
-                {(services || []).map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.name}
-                    {s.price ? ` — $${s.price}` : ""}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="w-full border rounded-lg px-3 py-2 bg-amber-50 border-amber-200 text-amber-800 text-sm">
-                Este profesional aún no cargó servicios.
-              </div>
-            )}
-          </div>
-
-          {/* Fecha y hora */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Fecha y horario</label>
-            <DateTimePicker 
-              date={date}
-              setDate={setDate}
-              time={time}
-              setTime={setTime}
-              professional={professional}
-            />
-          </div>
-
-          {/* Nota */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Nota (opcional)</label>
-            <textarea
-              rows={3}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 resize-none"
-              placeholder="Contanos brevemente qué necesitás…"
-            />
-          </div>
-
-          {/* Acciones */}
-          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-            <button
-              type="button"
               onClick={handleClose}
-              className="px-4 py-2 rounded-lg border hover:bg-gray-50 cursor-pointer"
+              className="text-gray-500 hover:text-black cursor-pointer"
+              aria-label="Cerrar modal"
             >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !hasServices || !serviceId || !date || !time}
-              className={`px-4 py-2 rounded-lg text-white whitespace-nowrap cursor-pointer ${
-                saving || !hasServices || !serviceId || !date || !time
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-[#0a0e17] hover:bg-black/80"
-              }`}
-            >
-              {saving ? "Creando…" : "Confirmar reserva"}
+              ✕
             </button>
           </div>
-        </form>
+  
+          {/* Body scrollable */}
+          <div className="px-4 sm:px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] overflow-y-auto max-h-[calc(100dvh-64px)] sm:max-h-none">
+            {/* A) Bloque Reserva rápida */}
+            <div className="pt-4">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-start gap-2">
+                  <span className="text-lg leading-6">⚡</span>
+                  <div className="leading-tight">
+                    <div className="font-medium text-emerald-900">Reserva rápida</div>
+                    <div className="text-xs text-emerald-800">
+                      {professional?.isAvailableNow ? (
+                        <b>Disponible ahora: ¡podés reservar ya!</b>
+                      ) : nextSlot ? (
+                        <>
+                          Próximo turno:&nbsp;
+                          <b>
+                            {new Date(nextSlot.dateStr + "T00:00:00").toLocaleDateString("es-AR", {
+                              weekday: "short",
+                              day: "2-digit",
+                              month: "2-digit",
+                            })}{" "}
+                            {nextSlot.timeStr}hs
+                          </b>
+                        </>
+                      ) : (
+                        <>Próximo turno:&nbsp;<span>No disponible</span></>
+                      )}
+                    </div>
+                  </div>
+                </div>
+  
+                <button
+                  type="button"
+                  onClick={submitInstant}
+                  disabled={savingInstant || !hasServices}
+                  className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto px-3 py-2 rounded-lg text-white whitespace-nowrap cursor-pointer ${
+                    savingInstant || !hasServices
+                      ? "bg-emerald-400/60 cursor-not-allowed"
+                      : "bg-emerald-600 hover:bg-emerald-700"
+                  }`}
+                  title="Crear reserva con el próximo turno disponible"
+                >
+                  <span>{savingInstant ? "Reservando…" : "Reservar ahora"}</span>
+                </button>
+              </div>
+            </div>
+  
+            {/* Separador visual */}
+            <div className="py-3">
+              <div className="flex items-center gap-3">
+                <div className="h-px bg-gray-200 flex-1" />
+                <span className="text-[10px] uppercase tracking-wide text-gray-500 select-none">
+                  o programá tu turno
+                </span>
+                <div className="h-px bg-gray-200 flex-1" />
+              </div>
+            </div>
+  
+            {/* B) Bloque Reserva programada */}
+            <form onSubmit={submit} className="space-y-4">
+              {msg && (
+                <div className="text-sm bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded-lg">
+                  {msg}
+                </div>
+              )}
+  
+              {/* Título de sección */}
+              <div className="flex items-center gap-2 -mb-1">
+                <span className="text-lg">📅</span>
+                <h4 className="text-sm font-semibold text-gray-900">Reserva programada</h4>
+              </div>
+  
+              {/* Servicio */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Servicio</label>
+                {hasServices ? (
+                  <select
+                    ref={selectRef}
+                    value={serviceId}
+                    onChange={(e) => setServiceId(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2"
+                  >
+                    {(services || []).map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.name}
+                        {s.price ? ` — $${s.price}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full border rounded-lg px-3 py-2 bg-amber-50 border-amber-200 text-amber-800 text-sm">
+                    Este profesional aún no cargó servicios.
+                  </div>
+                )}
+              </div>
+  
+              {/* Fecha y hora */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Fecha y horario</label>
+                <DateTimePicker
+                  date={date}
+                  setDate={setDate}
+                  time={time}
+                  setTime={setTime}
+                  professional={professional}
+                />
+              </div>
+  
+              {/* Nota */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Nota (opcional)</label>
+                <textarea
+                  rows={3}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 resize-none"
+                  placeholder="Contanos brevemente qué necesitás…"
+                />
+              </div>
+  
+              {/* Acciones */}
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="px-4 py-2 rounded-lg border hover:bg-gray-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || !hasServices || !serviceId || !date || !time}
+                  className={`px-4 py-2 rounded-lg text-white whitespace-nowrap cursor-pointer ${
+                    saving || !hasServices || !serviceId || !date || !time
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-[#0a0e17] hover:bg-black/80"
+                  }`}
+                >
+                  {saving ? "Creando…" : "Confirmar reserva"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -770,6 +866,7 @@ export default function ProfessionalDetailPage() {
   const rawWa = pro?.whatsapp?.number || pro?.user?.phone || pro?.user?.contactPhone || "";
   const waDigitsDetail = String(rawWa || "").replace(/\D/g, "");
   const canShowWa = Boolean(pro?.whatsapp?.visible && waDigitsDetail);
+  const linkedIn = pro?.linkedinUrl || pro?.user?.linkedin || "";
 
   return (
     <>
@@ -779,7 +876,14 @@ export default function ProfessionalDetailPage() {
       <section className="min-h-screen bg-white text-[#0a0e17] pb-16 pt-20">
         <div className="max-w-4xl mx-auto px-4">
           {/* Header */}
+          {/* dentro del header degradado */}
+
           <div className="relative h-40 rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 mt-6">
+            {/* LinkedIn arriba a la derecha (igual a las cards) */}
+            <span className="absolute top-3 right-3">
+              <LinkedInBadge url={linkedIn} />
+            </span>
+
             <div className="absolute -bottom-8 left-6 h-16 w-16 rounded-full ring-4 ring-white bg-white overflow-hidden grid place-items-center text-slate-800 font-bold">
               {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : initial}
             </div>
@@ -805,6 +909,8 @@ export default function ProfessionalDetailPage() {
                 ) : (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-700 border border-gray-200">Offline</span>
                 )}
+
+                <DepositBadge enabled={!!pro?.depositEnabled} amount={pro?.depositAmount} />
 
                 {canShowWa && (
                   <a
@@ -883,8 +989,66 @@ export default function ProfessionalDetailPage() {
         />
       </section>
 
-      {/* PDF y visor de fotos sin cambios */}
-      {/* ... (igual que tu versión) ... */}
+      {pdfOpen.open && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Documento"
+        >
+          <div className="w-full max-w-3xl bg-white rounded-2xl overflow-hidden shadow-xl">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-semibold">Documento</div>
+              <button
+                onClick={() => setPdfOpen({ url: "", open: false })}
+                className="text-gray-600 hover:text-black cursor-pointer"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="h-[70vh]">
+            <iframe
+              key={pdfOpen.url}
+              src={pdfOpen.url}
+              title="Documento"
+              className="w-full h-full"
+              allow="fullscreen"
+            />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {photoViewer.open && (
+        <div className="fixed inset-0 z-[60] bg-black/80 grid place-items-center p-3 sm:p-4" role="dialog" aria-modal="true" aria-label="Imágenes">
+          <div className="relative w-full max-w-4xl">
+            <button onClick={closeViewer} className="absolute -top-10 right-0 text-white/90 hover:text-white text-2xl" aria-label="Cerrar" title="Cerrar">✕</button>
+            <div className="relative bg-black rounded-xl overflow-hidden">
+              <button onClick={prevPhoto} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 rounded-full p-2" aria-label="Anterior" title="Anterior">←</button>
+              <button onClick={nextPhoto} className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 rounded-full p-2" aria-label="Siguiente" title="Siguiente">→</button>
+              {/* eslint-disable-next-line jsx-a11y/alt-text */}
+              <img src={photoViewer.urls[photoViewer.index]} className="w-full max-h-[80vh] sm:max-h-[75vh] object-contain bg-black" />
+            </div>
+            {photoViewer.urls.length > 1 && (
+              <div className="mt-3 flex gap-2 overflow-x-auto">
+                {photoViewer.urls.map((u, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setPhotoViewer((v) => ({ ...v, index: i }))}
+                    className={`w-20 h-20 rounded border overflow-hidden ${i === photoViewer.index ? "ring-2 ring-white" : "opacity-80 hover:opacity-100"}`}
+                    title={`Imagen ${i + 1}`}
+                  >
+                    {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                    <img src={u} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -917,14 +1081,7 @@ function ServicesChips({ servicesNames, loadingServices }) {
   );
 }
 
-function Documents({ docsMeta, setPdfOpen }) {
-  return (
-    <div className="mt-6">
-      <h2 className="font-semibold mb-2">Documentos</h2>
-      {/* ...igual que tu versión... */}
-    </div>
-  );
-}
+function Documents({ docsMeta, setPdfOpen }) { return ( <div className="mt-6"> <h2 className="font-semibold mb-2">Documentos</h2> <div className="flex items-center justify-between p-3 border rounded-xl mb-3"> <div> <div className="font-medium">Certificado de antecedentes</div> <div className="text-sm text-gray-600"> {docsMeta?.criminalRecord?.url ? ( docsMeta.criminalRecord.expired ? ( <span className="text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded text-xs">Vencido</span> ) : ( <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-xs">Vigente</span> ) ) : ( <span className="text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-xs">No cargado</span> )} {docsMeta?.criminalRecord?.expiresAt && ( <span className="ml-2 text-xs text-gray-500"> Vence: {new Date(docsMeta.criminalRecord.expiresAt).toLocaleDateString()} </span> )} </div> </div> {docsMeta?.criminalRecord?.url && ( <button className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50 cursor-pointer" onClick={() => setPdfOpen({ url: docsMeta.criminalRecord.url, open: true })} > Ver documento </button> )} </div> <div className="flex items-center justify-between p-3 border rounded-xl"> <div> <div className="font-medium">Matrícula / Credencial</div> <div className="text-sm text-gray-600"> {docsMeta?.license?.url ? ( <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-xs">Cargada</span> ) : ( <span className="text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-xs">No cargada</span> )} </div> </div> {docsMeta?.license?.url && ( <button className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50 cursor-pointer" onClick={() => setPdfOpen({ url: docsMeta.license.url, open: true })} > Ver documento </button> )} </div> </div> ); }
 
 function ReviewsBlock(props) {
   const {

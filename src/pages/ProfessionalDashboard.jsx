@@ -44,7 +44,7 @@ function ProfessionalDashboard() {
 
   const softMessage = (text) => {
     setMsgNow(text);
-    window.clearTimeout((softMessage._t || 0));
+    window.clearTimeout(softMessage._t || 0);
     softMessage._t = window.setTimeout(() => setMsgNow(""), 2200);
   };
 
@@ -305,10 +305,7 @@ function ProfessionalDashboard() {
             </button>
           </div>
 
-          {/* ... resto igual (sin cambios de lógica) ... */}
-          {/* Render de reservas (omito por brevedad, tu versión actual funciona) */}
-        </div>
-      </div>
+          {loadingNext ? ( <p className="text-gray-600">Cargando…</p> ) : nextBookings.length === 0 ? ( <div className="border rounded-xl p-6 bg-white"> <p className="text-gray-600 mb-2">No tenés reservas próximas.</p> <p className="text-gray-500 text-sm">Cuando te lleguen, aparecerán acá.</p> </div> ) : ( <div className="grid md:grid-cols-2 gap-6"> {nextBookings.map((b) => { const clientName = b?.client?.name || b?.client?.email || "Cliente"; const serviceName = b?.service?.name || "Servicio"; const when = formatDateTime(b?.scheduledAt || b?.createdAt); return ( <div key={b._id} className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => { const peerId = b?.client?._id || b?.client?.user?._id; if (peerId) navigate(`/chats/${peerId}`); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); const peerId = b?.client?._id || b?.client?.user?._id; if (peerId) navigate(`/chats/${peerId}`); } }} title="Abrir chat con el cliente" > <div className="flex items-start justify-between gap-3"> <div> <div className="font-semibold leading-5">{clientName}</div> <div className="text-sm text-gray-700">{serviceName}</div> <div className="text-sm text-gray-600">{when}</div> </div> <BookingStatusBadge status={b?.status} /> </div> {b?.note && ( <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3"> {b.note} </p> )} <div className="mt-3 flex justify-end gap-2"> <button onClick={() => navigate(`/chats/${b?.client?._id}`)} className="text-sm px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 cursor-pointer" > Chatear con cliente </button> <BookingActions booking={b} role="pro" onChanged={fetchNextBookings} /> </div> </div> ); })} </div> )} </div> </div>
 
       {/* Dock de chat IG/FB */}
       <ChatDock

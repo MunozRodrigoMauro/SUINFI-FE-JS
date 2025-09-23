@@ -241,65 +241,96 @@ function Navbar() {
                   </button>
 
                   {openMenu && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white text-black border rounded-xl shadow-xl overflow-hidden">
-                      <div className="px-4 py-3 border-b">
-                        <p className="text-xs text-gray-500">Sesión</p>
-                        <p className="font-semibold truncate">{user?.email}</p>
+                    <div
+                      className="absolute right-0 mt-2 w-72 bg-white text-black border rounded-xl shadow-xl overflow-hidden z-50"
+                      role="menu"
+                      aria-labelledby="user-menu-button"
+                    >
+                      {/* Encabezado */}
+                      <div className="px-4 py-3 border-b bg-gray-50">
+                        <p className="text-[11px] uppercase tracking-wide text-gray-500">Sesión</p>
+                        <p className="font-semibold truncate" title={user?.email}>{user?.email}</p>
                       </div>
 
-                      <button
-                        onClick={goToDashboard}
-                        className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
-                      >
-                        Ir a mi panel
-                      </button>
-                      <Link
-                        to="/profile"
-                        onClick={() => setOpenMenu(false)}
-                        className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
-                      >
-                        Mi perfil
-                      </Link>
-                      <Link
-                        to="/chats"
-                        onClick={() => setOpenMenu(false)}
-                        className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
-                      >
-                        Mensajes
-                      </Link>
+                      {/* CTA principal */}
+                      <div className="p-3">
+                        <button
+                          onClick={goToDashboard}
+                          aria-label="Ir a mi panel"
+                          className="group w-full flex items-center justify-center gap-2 px-4 py-3
+                                    rounded-xl bg-[#0a0e17] text-white font-semibold shadow-md ring-1 ring-black/10
+                                    hover:bg-black hover:shadow-lg hover:-translate-y-[1px]
+                                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black
+                                    active:translate-y-0 transition"
+                        >
+                          {/* Ícono panel */}
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z" />
+                          </svg>
+                          <span>Abrir panel</span>
+                          {/* Flecha de acción a la derecha */}
+                          <svg
+                            className="h-4 w-4 opacity-80 translate-x-0 group-hover:translate-x-0.5 transition-transform"
+                            viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+                          >
+                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L9.586 11H4a1 1 0 110-2h5.586L7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/>
+                          </svg>
+                        </button>
+                      </div>
 
+                      {/* Atajos secundarios */}
+                      <div className="py-1">
+                        <Link
+                          to="/profile"
+                          onClick={() => setOpenMenu(false)}
+                          className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          Ver/editar perfil
+                        </Link>
+
+                        <Link
+                          to="/chats"
+                          onClick={() => setOpenMenu(false)}
+                          className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          Mensajes
+                        </Link>
+                      </div>
+
+                      {/* Bloque profesional: disponible ahora */}
                       {user?.role === "professional" && (
-                        <>
-                          <div className="px-4 py-2 border-t">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`inline-block h-2.5 w-2.5 rounded-full ${
-                                    isAvailableNow ? "bg-emerald-500" : "bg-gray-400"
-                                  }`}
-                                />
-                                <span className="text-sm font-medium">Disponible ahora</span>
-                              </div>
-
-                              <button
-                                onClick={toggleAvailability}
-                                disabled={loadingAvail}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition cursor-pointer ${
-                                  isAvailableNow ? "bg-emerald-500" : "bg-gray-300"
-                                } ${loadingAvail ? "opacity-60" : ""}`}
-                              >
-                                <span
-                                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-                                    isAvailableNow ? "translate-x-6" : "translate-x-1"
-                                  }`}
-                                />
-                              </button>
+                        <div className="px-4 py-2 border-t">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`inline-block h-2.5 w-2.5 rounded-full ${
+                                  isAvailableNow ? "bg-emerald-500" : "bg-gray-400"
+                                }`}
+                              />
+                              <span className="text-sm font-medium">Disponible ahora</span>
                             </div>
-                            {availMsg && <p className="text-xs text-gray-500 mt-2">{availMsg}</p>}
+
+                            <button
+                              onClick={toggleAvailability}
+                              disabled={loadingAvail}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition cursor-pointer ${
+                                isAvailableNow ? "bg-emerald-500" : "bg-gray-300"
+                              } ${loadingAvail ? "opacity-60" : ""}`}
+                            >
+                              <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                                  isAvailableNow ? "translate-x-6" : "translate-x-1"
+                                }`}
+                              />
+                            </button>
                           </div>
-                        </>
+                          {availMsg && <p className="text-xs text-gray-500 mt-2">{availMsg}</p>}
+                        </div>
                       )}
 
+                      {/* Cerrar sesión */}
                       <button
                         onClick={() => {
                           setOpenMenu(false);
@@ -307,6 +338,7 @@ function Navbar() {
                           navigate("/login");
                         }}
                         className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors border-t cursor-pointer"
+                        role="menuitem"
                       >
                         Cerrar sesión
                       </button>
