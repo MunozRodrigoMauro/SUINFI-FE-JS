@@ -1,13 +1,19 @@
 // src/components/booking/BookingCard.jsx
-import React from "react";
+import React, { useMemo, useState } from "react";
 import BookingStatusBadge from "./BookingStatusBadge";
 import { formatDateTime } from "../../utils/datetime";
+import { useAuth } from "../../auth/AuthContext";
+import ReportModal from "../reports/ReportModal";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
-const absUrl = (u) => (!u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`);
+const absUrl = (u) =>
+  !u ? "" : /^https?:\/\//i.test(u) ? u : u.startsWith("/") ? `${ASSET_BASE}${u}` : `${ASSET_BASE}/${u}`;
 
 export default function BookingCard({ booking, role, rightSlot, onOpenChat }) {
+  const { user } = useAuth();
+  const [openReport, setOpenReport] = useState(false);
+
   const clientUser = booking?.client || booking?.client?.user || null;
   const proUser = booking?.professional?.user || null;
 
@@ -22,9 +28,45 @@ export default function BookingCard({ booking, role, rightSlot, onOpenChat }) {
   const serviceName = booking?.service?.name || "Servicio";
   const when = formatDateTime(booking?.scheduledAt);
 
-  // accesibilidad para Enter/Espacio
+  // IDs posibles según cómo venga el populate
+  const clientUserId = typeof booking?.client === "object" ? booking?.client?._id : booking?.client || null;
+  const proUserId =
+    (booking?.professional?.user && typeof booking.professional.user === "object"
+      ? booking.professional.user._id
+      : booking?.professional?.user) || null;
+
+  const meId = user?._id || user?.id || null;
+
+  // lógica de denuncia
+  const isCompleted = booking?.status === "completed";
+
+  // si el rol es profesional y no viene populado pro.user, igual permitimos denunciar al cliente
+  const amClient = meId && clientUserId && String(meId) === String(clientUserId);
+  const amPro =
+    meId &&
+    ((proUserId && String(meId) === String(proUserId)) ||
+      (role === "pro" && !proUserId)); // fallback por rol si no hay populate
+
+  const targetUser = useMemo(() => {
+    if (amClient && (proUserId || proName)) {
+      return { _id: proUserId || "", name: proName || "Profesional" };
+    }
+    if (amPro && clientUserId) {
+      return { _id: String(clientUserId), name: clientName || "Cliente" };
+    }
+    return null;
+  }, [amClient, amPro, proUserId, clientUserId, proName, clientName]);
+
+  // si no tenemos _id del target (por falta de populate al pro), igualmente mostramos el botón y el BE validará
+  const canReport = isCompleted && (amClient || amPro);
+
+  const handleCardClick = () => {
+    if (openReport) return; // bloquea abrir chat si el modal está abierto
+    if (onOpenChat) onOpenChat();
+  };
+
   const onKey = (e) => {
-    if (!onOpenChat) return;
+    if (!onOpenChat || openReport) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onOpenChat();
@@ -36,7 +78,7 @@ export default function BookingCard({ booking, role, rightSlot, onOpenChat }) {
       className={`border rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3 ${
         onOpenChat ? "cursor-pointer hover:shadow-md transition" : ""
       }`}
-      onClick={onOpenChat || undefined}
+      onClick={onOpenChat ? handleCardClick : undefined}
       role={onOpenChat ? "button" : undefined}
       tabIndex={onOpenChat ? 0 : undefined}
       onKeyDown={onOpenChat ? onKey : undefined}
@@ -61,6 +103,31 @@ export default function BookingCard({ booking, role, rightSlot, onOpenChat }) {
       )}
 
       <div className="flex justify-end">{rightSlot}</div>
+
+      <div className="flex gap-2 justify-end mt-2">
+        {canReport && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenReport(true);
+            }}
+            className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50"
+          >
+            Reportar usuario
+          </button>
+        )}
+      </div>
+
+      {openReport && (
+        <ReportModal
+          open={openReport}
+          onClose={() => setOpenReport(false)}
+          booking={booking}
+          targetUser={targetUser}
+          onSaved={() => {}}
+        />
+      )}
     </div>
   );
 }
