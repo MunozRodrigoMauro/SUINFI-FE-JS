@@ -1,7 +1,7 @@
 // src/components/layout/TopBar.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import logo from "../../assets/logo suinfi.png"; // ajusta la ruta si es distinta
+import logo from "../../assets/LogoNavbar.png"; // ajusta la ruta si es distinta
 
 function TopBar({ showBack = true }) {
   const navigate = useNavigate();

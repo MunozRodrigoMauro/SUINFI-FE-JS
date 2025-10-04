@@ -1,4 +1,6 @@
 // src/pages/GoogleCallbackPage.jsx
+// (sin cambios funcionales; ya maneja error, token, next y role)
+
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -12,8 +14,25 @@ export default function GoogleCallbackPage() {
 
   useEffect(() => {
     const run = async () => {
-      const token = params.get("token");
+      const error = params.get("error");
       const next = params.get("next");
+      const token = params.get("token");
+
+      if (error) {
+        switch (error) {
+          case "ACCOUNT_NOT_FOUND_FOR_ROLE":
+            navigate("/register", { replace: true });
+            return;
+          case "ROLE_CONFLICT":
+          case "EMAIL_ALREADY_REGISTERED":
+          case "OAUTH_STATE_INVALID":
+          case "OAUTH_TOKEN_EXCHANGE_FAILED":
+          case "OAUTH_USERINFO_FAILED":
+          default:
+            navigate("/login", { replace: true });
+            return;
+        }
+      }
 
       if (!token) {
         navigate("/login", { replace: true });
@@ -24,19 +43,22 @@ export default function GoogleCallbackPage() {
 
       try {
         let u = null;
+
         try {
-          const vr = await verifyToken(token); // { user }
+          const vr = await verifyToken(token);
           u = vr?.user || null;
         } catch {}
 
         if (!u) {
-          const me = await getMyProfile(); // { user, requiresOnboarding? }
+          const me = await getMyProfile();
           u = me?.user || me || null;
         }
 
         if (u) {
           setUser(u);
-          try { joinUserRoom(u.id || u._id); } catch {}
+          try {
+            joinUserRoom(u.id || u._id);
+          } catch {}
         }
 
         if (next) {

@@ -47,7 +47,7 @@ function Footer() {
                 </li>
                 <li>
                   <a href="#como-funciona" className="block py-1.5 text-sm hover:text-white">
-                    Cómo funciona
+                    Aspectos Clave
                   </a>
                 </li>
 
@@ -90,13 +90,18 @@ function Footer() {
               }`}
             >
               <div className="flex space-x-4 pl-2 py-3">
-                <a href="#" className="text-gray-400 hover:text-white text-lg">
+              <a
+                  href="https://www.instagram.com/__cuyit__/"
+                  className="text-gray-400 hover:text-white text-xl"
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   <FaInstagram />
                 </a>
-                <a href="#" className="text-gray-400 hover:text-white text-lg">
-                  <FaTwitter />
+                <a href="#" className="text-gray-400 hover:text-white text-xl pointer-events-none opacity-50 cursor-not-allowed" target="_blank" rel="noreferrer" >
+                  <FaFacebook />
                 </a>
-                <a href="#" className="text-gray-400 hover:text-white text-lg">
+                <a href="#" className="text-gray-400 hover:text-white text-xl pointer-events-none opacity-50 cursor-not-allowed" target="_blank" rel="noreferrer" >
                   <FaLinkedin />
                 </a>
               </div>
@@ -130,7 +135,7 @@ function Footer() {
                 </li>
                 <li>
                   <a href="#como-funciona" className="hover:text-white">
-                    Cómo funciona
+                    Aspectos clave
                   </a>
                 </li>
 
@@ -165,10 +170,10 @@ function Footer() {
                 >
                   <FaInstagram />
                 </a>
-                <a href="#" className="text-gray-400 hover:text-white text-xl" target="_blank" rel="noreferrer">
+                <a href="#" className="text-gray-400 hover:text-white text-xl pointer-events-none opacity-50 cursor-not-allowed" target="_blank" rel="noreferrer" >
                   <FaFacebook />
                 </a>
-                <a href="#" className="text-gray-400 hover:text-white text-xl" target="_blank" rel="noreferrer">
+                <a href="#" className="text-gray-400 hover:text-white text-xl pointer-events-none opacity-50 cursor-not-allowed" target="_blank" rel="noreferrer" >
                   <FaLinkedin />
                 </a>
               </div>

@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import logo from "../../assets/LogoNavbar.png";
 import { setAvailableNow, getAvailableNowProfessionals } from "../../api/professionalService";
 import { socket } from "../../lib/socket";
+import { getMyPoints } from "../../api/pointsService";
 
 function Navbar() {
   const { user, logout, avatarVersion } = useAuth();
@@ -13,6 +14,7 @@ function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [openMenu, setOpenMenu] = useState(false);
   const menuRef = useRef(null);
+  const [pointsBalance, setPointsBalance] = useState(null);
 
   const [isAvailableNow, setIsAvailableNow] = useState(false);
   const [loadingAvail, setLoadingAvail] = useState(false);
@@ -31,6 +33,21 @@ function Navbar() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
+
+  // cargar puntos al abrir el menú (una vez por apertura)
+  useEffect(() => {
+    let aborted = false;
+    (async () => {
+      if (!openMenu || !user) return;
+      try {
+        const res = await getMyPoints();
+        if (!aborted) setPointsBalance(res?.balance ?? 0);
+      } catch {
+        if (!aborted) setPointsBalance(null);
+      }
+    })();
+    return () => { aborted = true; };
+  }, [openMenu, user]);
 
   // Estado inicial de "Disponible ahora"
   useEffect(() => {
@@ -175,9 +192,7 @@ function Navbar() {
                 </summary>
                 <div className="absolute right-0 mt-2 w-72 bg-white text-black border rounded-xl shadow-xl overflow-hidden z-50">
                   <button
-                    onClick={() => {
-                      /* abrir chat de soporte */
-                    }}
+                    onClick={() => {/* abrir chat de soporte */}}
                     className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                   >
                     Chat con soporte
@@ -189,10 +204,7 @@ function Navbar() {
                     Requisitos para socios de la app
                   </button>
                   <button
-                    onClick={() => {
-                      logout();
-                      navigate("/login");
-                    }}
+                    onClick={() => { logout(); navigate("/login"); }}
                     className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
                   >
                     Cerrar sesión
@@ -203,148 +215,126 @@ function Navbar() {
           ) : (
             <>
               {user ? (
-                <div className="relative" ref={menuRef}>
-                  <button
-                    onClick={() => setOpenMenu((o) => !o)}
-                    className="flex items-center gap-2 bg-white text-black px-3 py-1.5 rounded-lg shadow hover:bg-gray-100 transition"
+                <>
+                  {/* CTA Puntos visible sin abrir menú */}
+                  <Link
+                    to="/points"
+                    onClick={() => setOpenMenu(false)}
+                    className="hidden md:inline-flex items-center px-3 py-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition"
                   >
-                    <div className="relative h-7 w-7 flex items-center justify-center rounded-full bg-gray-200 text-xs font-bold overflow-hidden">
-                      {avatarUrl ? (
-                        <img
-                          key={avatarUrl}           // fuerza re-render al cambiar ?v=
-                          src={avatarUrl}
-                          alt="Avatar"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        initial
-                      )}
-                      {user?.role === "professional" && (
-                        <span
-                          title={isAvailableNow ? "Estás disponible" : "No disponible"}
-                          className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
-                            isAvailableNow ? "bg-emerald-500" : "bg-gray-400"
-                          }`}
-                        />
-                      )}
-                    </div>
-                    <span className="max-w-[140px] md:max-w-[160px] truncate">
-                      {(user?.name?.trim() || user?.email || "").replace(/\s+/g, " ").split(" ")[0].toUpperCase()}
-                    </span>
-                    <svg className={`h-4 w-4 transition ${openMenu ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+                    {pointsBalance !== null ? `${pointsBalance} pts` : "Puntos"}
+                  </Link>
 
-                  {openMenu && (
-                    <div
-                      className="absolute right-0 mt-2 w-72 bg-white text-black border rounded-xl shadow-xl overflow-hidden z-50"
-                      role="menu"
-                      aria-labelledby="user-menu-button"
+                  {/* Dropdown usuario */}
+                  <div className="relative" ref={menuRef}>
+                    <button
+                      onClick={() => setOpenMenu((o) => !o)}
+                      className="flex items-center gap-2 bg-white text-black px-3 py-1.5 rounded-lg shadow hover:bg-gray-100 transition"
                     >
-                      {/* Encabezado */}
-                      <div className="px-4 py-3 border-b bg-gray-50">
-                        <p className="text-[11px] uppercase tracking-wide text-gray-500">Sesión</p>
-                        <p className="font-semibold truncate" title={user?.email}>{user?.email}</p>
+                      <div className="relative h-7 w-7 flex items-center justify-center rounded-full bg-gray-200 text-xs font-bold overflow-hidden">
+                        {avatarUrl ? (
+                          <img key={avatarUrl} src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
+                        ) : (
+                          initial
+                        )}
+                        {user?.role === "professional" && (
+                          <span
+                            title={isAvailableNow ? "Estás disponible" : "No disponible"}
+                            className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${isAvailableNow ? "bg-emerald-500" : "bg-gray-400"}`}
+                          />
+                        )}
                       </div>
+                      <span className="max-w-[140px] md:max-w-[160px] truncate">
+                        {(user?.name?.trim() || user?.email || "").replace(/\s+/g, " ").split(" ")[0].toUpperCase()}
+                      </span>
+                      <svg className={`h-4 w-4 transition ${openMenu ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                          fillRule="evenodd"
+                          d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
 
-                      {/* CTA principal */}
-                      <div className="p-3">
-                        <button
-                          onClick={goToDashboard}
-                          aria-label="Ir a mi panel"
-                          className="group w-full flex items-center justify-center gap-2 px-4 py-3
-                                    rounded-xl bg-[#0a0e17] text-white font-semibold shadow-md ring-1 ring-black/10
-                                    hover:bg-black hover:shadow-lg hover:-translate-y-[1px]
-                                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black
-                                    active:translate-y-0 transition"
-                        >
-                          {/* Ícono panel */}
-                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                            <path d="M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z" />
-                          </svg>
-                          <span>Abrir panel</span>
-                          {/* Flecha de acción a la derecha */}
-                          <svg
-                            className="h-4 w-4 opacity-80 translate-x-0 group-hover:translate-x-0.5 transition-transform"
-                            viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+                    {openMenu && (
+                      <div className="absolute right-0 mt-2 w-72 bg-white text-black border rounded-xl shadow-xl overflow-hidden z-50" role="menu" aria-labelledby="user-menu-button">
+                        {/* Encabezado */}
+                        <div className="px-4 py-3 border-b bg-gray-50">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500">Sesión</p>
+                          <p className="font-semibold truncate" title={user?.email}>{user?.email}</p>
+                          {pointsBalance !== null && (
+                            <div className="mt-1 text-sm">
+                              <span className="opacity-60">Puntos: </span>
+                              <span className="font-semibold">{pointsBalance} pts</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* CTA principal */}
+                        <div className="p-3">
+                          <button
+                            onClick={goToDashboard}
+                            aria-label="Ir a mi panel"
+                            className="group w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0a0e17] text-white font-semibold shadow-md ring-1 ring-black/10 hover:bg-black hover:shadow-lg hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black active:translate-y-0 transition"
                           >
-                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L9.586 11H4a1 1 0 110-2h5.586L7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/>
-                          </svg>
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                              <path d="M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z" />
+                            </svg>
+                            <span>Abrir panel</span>
+                            <svg className="h-4 w-4 opacity-80 translate-x-0 group-hover:translate-x-0.5 transition-transform" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L9.586 11H4a1 1 0 110-2h5.586L7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Atajos */}
+                        <div className="py-1">
+                          <Link to="/profile" onClick={() => setOpenMenu(false)} className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer" role="menuitem">
+                            Ver/editar perfil
+                          </Link>
+                          <Link to="/chats" onClick={() => setOpenMenu(false)} className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer" role="menuitem">
+                            Mensajes
+                          </Link>
+                          <Link to="/points" onClick={() => setOpenMenu(false)} className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer" role="menuitem">
+                            Mis Puntos
+                          </Link>
+                          <Link to="/rewards" onClick={() => setOpenMenu(false)} className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer" role="menuitem">
+                            Catálogo de beneficios
+                          </Link>
+                        </div>
+
+                        {/* Pro: Disponible ahora */}
+                        {user?.role === "professional" && (
+                          <div className="px-4 py-2 border-t">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className={`inline-block h-2.5 w-2.5 rounded-full ${isAvailableNow ? "bg-emerald-500" : "bg-gray-400"}`} />
+                                <span className="text-sm font-medium">Disponible ahora</span>
+                              </div>
+                              <button
+                                onClick={toggleAvailability}
+                                disabled={loadingAvail}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition cursor-pointer ${isAvailableNow ? "bg-emerald-500" : "bg-gray-300"} ${loadingAvail ? "opacity-60" : ""}`}
+                              >
+                                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${isAvailableNow ? "translate-x-6" : "translate-x-1"}`} />
+                              </button>
+                            </div>
+                            {availMsg && <p className="text-xs text-gray-500 mt-2">{availMsg}</p>}
+                          </div>
+                        )}
+
+                        {/* Cerrar sesión */}
+                        <button
+                          onClick={() => { setOpenMenu(false); logout(); navigate("/login"); }}
+                          className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors border-t cursor-pointer"
+                          role="menuitem"
+                        >
+                          Cerrar sesión
                         </button>
                       </div>
-
-                      {/* Atajos secundarios */}
-                      <div className="py-1">
-                        <Link
-                          to="/profile"
-                          onClick={() => setOpenMenu(false)}
-                          className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
-                          role="menuitem"
-                        >
-                          Ver/editar perfil
-                        </Link>
-
-                        <Link
-                          to="/chats"
-                          onClick={() => setOpenMenu(false)}
-                          className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
-                          role="menuitem"
-                        >
-                          Mensajes
-                        </Link>
-                      </div>
-
-                      {/* Bloque profesional: disponible ahora */}
-                      {user?.role === "professional" && (
-                        <div className="px-4 py-2 border-t">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`inline-block h-2.5 w-2.5 rounded-full ${
-                                  isAvailableNow ? "bg-emerald-500" : "bg-gray-400"
-                                }`}
-                              />
-                              <span className="text-sm font-medium">Disponible ahora</span>
-                            </div>
-
-                            <button
-                              onClick={toggleAvailability}
-                              disabled={loadingAvail}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition cursor-pointer ${
-                                isAvailableNow ? "bg-emerald-500" : "bg-gray-300"
-                              } ${loadingAvail ? "opacity-60" : ""}`}
-                            >
-                              <span
-                                className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-                                  isAvailableNow ? "translate-x-6" : "translate-x-1"
-                                }`}
-                              />
-                            </button>
-                          </div>
-                          {availMsg && <p className="text-xs text-gray-500 mt-2">{availMsg}</p>}
-                        </div>
-                      )}
-
-                      {/* Cerrar sesión */}
-                      <button
-                        onClick={() => {
-                          setOpenMenu(false);
-                          logout();
-                          navigate("/login");
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors border-t cursor-pointer"
-                        role="menuitem"
-                      >
-                        Cerrar sesión
-                      </button>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                </>
               ) : (
                 <>
                   {location.pathname !== "/login" && (
@@ -353,10 +343,7 @@ function Navbar() {
                     </Link>
                   )}
                   {location.pathname !== "/register" && (
-                    <Link
-                      to="/register"
-                      className="border border-white text-white px-4 py-2 rounded-md hover:bg-white hover:text-[#0a0e17] transition-colors"
-                    >
+                    <Link to="/register" className="border border-white text-white px-4 py-2 rounded-md hover:bg-white hover:text-[#0a0e17] transition-colors">
                       Registrate
                     </Link>
                   )}

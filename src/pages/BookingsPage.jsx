@@ -62,6 +62,10 @@ export default function BookingsPage() {
   const [reviewMap, setReviewMap] = useState({});
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState({ bookingId: "", professionalId: "" });
+  
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   const role = useMemo(() => {
     if (tab !== "auto") return tab;
@@ -97,6 +101,7 @@ export default function BookingsPage() {
   };
 
   useEffect(() => {
+    setPage(1);
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, status]);
@@ -179,6 +184,83 @@ export default function BookingsPage() {
     return { recent, upcoming, completed, other };
   }, [items, status, sortDir]);
 
+  // ⬇️ NUEVO: items visibles por página (flatten -> slice -> re-group)
+  const paged = useMemo(() => {
+    let flat = [];
+    if (status) {
+      // con filtro de estado ya mostrás 'upcoming' como lista única
+      flat = grouped.upcoming.slice();
+    } else {
+      // sin filtro: concatenamos en el mismo orden de la UI
+      flat = [
+        ...grouped.recent,
+        ...grouped.upcoming,
+        ...grouped.completed,
+        ...grouped.other,
+      ];
+    }
+
+    const totalCount = flat.length;
+    const start = (page - 1) * PAGE_SIZE;
+    const slice = flat.slice(start, start + PAGE_SIZE);
+
+    // rearmar secciones solo con los IDs de la página actual
+    const ids = new Set(slice.map((b) => b._id));
+    const reGroup = status
+      ? { recent: [], upcoming: slice, completed: [], other: [] }
+      : {
+          recent: grouped.recent.filter((b) => ids.has(b._id)),
+          upcoming: grouped.upcoming.filter((b) => ids.has(b._id)),
+          completed: grouped.completed.filter((b) => ids.has(b._id)),
+          other: grouped.other.filter((b) => ids.has(b._id)),
+        };
+
+    return { totalCount, groups: reGroup };
+  }, [grouped, status, page, PAGE_SIZE]);
+
+  // ⬇️ NUEVO: recalcular total y asegurar que la página sea válida
+  useEffect(() => {
+    const totalCount = status
+      ? grouped.upcoming.length
+      : grouped.recent.length +
+        grouped.upcoming.length +
+        grouped.completed.length +
+        grouped.other.length;
+
+    setTotal(totalCount);
+    setPage((p) => ((p - 1) * PAGE_SIZE < totalCount ? p : 1));
+  }, [grouped, status, PAGE_SIZE]);
+
+  // ⬇️ NUEVO: Pager reutilizable
+  const Pager = () => {
+    if (!total) return null;
+    const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    return (
+      <div className="mt-4 mb-2 flex items-center justify-between">
+        <span className="text-sm text-gray-600">
+          Mostrando {Math.min((page - 1) * PAGE_SIZE + 1, total)}–
+          {Math.min(page * PAGE_SIZE, total)} de {total}
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            ◀ Anterior
+          </button>
+          <button
+            onClick={() => setPage((p) => (p >= maxPage ? p : p + 1))}
+            disabled={page >= maxPage}
+            className="px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            Siguiente ▶
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const DesktopActions = (
     <div className="hidden md:flex items-center gap-2">
       <select
@@ -213,6 +295,7 @@ export default function BookingsPage() {
 
   const Section = ({ title, items }) => {
     if (!items?.length) return null;
+
     return (
       <div className="mb-8">
         <div className="sticky top-[calc(theme(spacing.14)+theme(height.12)+48px)] md:top-[calc(theme(spacing.14)+theme(height.12))] z-[1] bg-white/90 backdrop-blur border-b pb-2 mb-3">
@@ -333,19 +416,28 @@ export default function BookingsPage() {
 
       <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-16 px-4">
         <div className="max-w-5xl mx-auto">
-          {loading ? (
-            <p className="text-gray-600">Cargando…</p>
+        {loading ? (
+        <p className="text-gray-600">Cargando…</p>
           ) : items.length === 0 ? (
             <p className="text-gray-600">No hay reservas.</p>
-          ) : status ? (
-            // con filtro, mostramos como una sola sección (“Resultados”)
-            <Section title="Resultados" items={grouped.upcoming} />
           ) : (
             <>
-              <Section title="🆕 Recientes (últimas 24 h)" items={grouped.recent} />
-              <Section title="🔜 Próximas" items={grouped.upcoming} />
-              <Section title="✅ Completadas" items={grouped.completed} />
-              <Section title="🗂️ Otras (canceladas / rechazadas / vencidas)" items={grouped.other} />
+              {/* Pager arriba (opcional) */}
+              <Pager />
+
+              {status ? (
+                <Section title="Resultados" items={paged.groups.upcoming} />
+              ) : (
+                <>
+                  <Section title="🆕 Recientes (últimas 24 h)" items={paged.groups.recent} />
+                  <Section title="🔜 Próximas" items={paged.groups.upcoming} />
+                  <Section title="✅ Completadas" items={paged.groups.completed} />
+                  <Section title="🗂️ Otras (canceladas / rechazadas / vencidas)" items={paged.groups.other} />
+                </>
+              )}
+
+              {/* Pager abajo */}
+              <Pager />
             </>
           )}
         </div>

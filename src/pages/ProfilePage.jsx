@@ -149,7 +149,47 @@ function pickFromE164(e164) {
 const isValidLinkedinUrl = (u = "") =>
   /^https?:\/\/(www\.)?linkedin\.com\/.+/i.test(String(u).trim());
 
-// ───────── Country dropdown
+// ───────── helpers UI (sin tocar lógica)
+const fmtHHMM = (d) =>
+  `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+const timeAgo = (ts) => {
+  if (!ts) return "";
+  const diff = Date.now() - ts;
+  const m = Math.round(diff / 60000);
+  if (m < 1) return "justo ahora";
+  if (m === 1) return "hace 1 min";
+  if (m < 60) return `hace ${m} min`;
+  const h = Math.round(m / 60);
+  if (h === 1) return "hace 1 hora";
+  return `hace ${h} horas`;
+};
+
+// ───────── toasts
+function Toasts({ items, onDismiss }) {
+  return (
+    <div className="fixed bottom-4 right-4 z-[100] space-y-2">
+      {items.slice(0, 3).map((t) => (
+        <div
+          key={t.id}
+          className="rounded-lg border border-emerald-200 bg-white shadow-md px-3 py-2 text-sm text-emerald-700 flex items-center gap-2"
+        >
+          <span>✅</span>
+          <span>{t.text}</span>
+          <button
+            onClick={() => onDismiss(t.id)}
+            className="ml-2 text-emerald-700/60 hover:text-emerald-900"
+            aria-label="Cerrar"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ───────── Country dropdown (igual)
 function usePortal() {
   const elRef = React.useRef(null);
   if (!elRef.current) {
@@ -278,7 +318,6 @@ function CountryDropdown({ open, anchorRef, valueISO, onSelect, onClose }) {
 
 /* ──────────────────────────────────────────────────────────
    Geocoding helpers (MEJORADOS): devuelven feature + addr
-   MapTiler (estilo Mapbox) → usamos context para armar campos
 ────────────────────────────────────────────────────────── */
 function extractAddrFromFeature(f) {
   const ctx = Array.isArray(f?.context) ? f.context : [];
@@ -300,7 +339,6 @@ function extractAddrFromFeature(f) {
     f?.properties?.postalcode ||
     "";
 
-  // En features tipo "address": text = calle, address = número
   const street = f?.text || f?.properties?.street || "";
   const number = String(f?.address || f?.properties?.housenumber || "").replace(/[()]/g, "").trim();
 
@@ -375,10 +413,50 @@ export default function ProfilePage() {
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState("");
 
+  // acordeones (mantener)
   const [openAccount, setOpenAccount] = useState(false);
+  const [openWhatsApp, setOpenWhatsApp] = useState(false);
   const [openAddress, setOpenAddress] = useState(false);
   const [openAvailability, setOpenAvailability] = useState(false);
+  const [openDeposit, setOpenDeposit] = useState(false);
+  const [openPayout, setOpenPayout] = useState(false);
   const [openDocuments, setOpenDocuments] = useState(false);
+  const [openLinkedin, setOpenLinkedin] = useState(false);
+
+  // estado por sección (dirty / lastSaved)
+  const [dirtyAccount, setDirtyAccount] = useState(false);
+  const [savedAtAccount, setSavedAtAccount] = useState(null);
+
+  const [dirtyWhatsApp, setDirtyWhatsApp] = useState(false);
+  const [savedAtWhatsApp, setSavedAtWhatsApp] = useState(null);
+
+  const [dirtyAddress, setDirtyAddress] = useState(false);
+  const [savedAtAddress, setSavedAtAddress] = useState(null);
+
+  const [dirtyAgenda, setDirtyAgenda] = useState(false);
+  const [savedAtAgenda, setSavedAtAgenda] = useState(null);
+
+  const [dirtyDeposit, setDirtyDeposit] = useState(false);
+  const [savedAtDeposit, setSavedAtDeposit] = useState(null);
+
+  const [dirtyPayout, setDirtyPayout] = useState(false);
+  const [savedAtPayout, setSavedAtPayout] = useState(null);
+
+  const [dirtyDocs, setDirtyDocs] = useState(false);
+  const [savedAtDocs, setSavedAtDocs] = useState(null);
+
+  const [dirtyLinkedin, setDirtyLinkedin] = useState(false);
+  const [savedAtLinkedin, setSavedAtLinkedin] = useState(null);
+
+  // toasts
+  const [toasts, setToasts] = useState([]);
+  const pushToast = (text) => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((t) => [{ id, text }, ...t].slice(0, 3));
+    setTimeout(() => {
+      setToasts((t) => t.filter((x) => x.id !== id));
+    }, 3000);
+  };
 
   const [addr, setAddr] = useState({
     country: "",
@@ -427,16 +505,14 @@ export default function ProfilePage() {
 
   const waCountry = useMemo(() => findCountry(waISO), [waISO]);
 
-  // ───────── Depósito/Seña (nuevo)
-  const [openDeposit, setOpenDeposit] = useState(false);
+  // Depósito/Seña
   const [depositEnabled, setDepositEnabled] = useState(false);
   const [depositAmount, setDepositAmount] = useState("");
   const [savingDeposit, setSavingDeposit] = useState(false);
   const [depositMsg, setDepositMsg] = useState("");
   const [depositMsgType, setDepositMsgType] = useState("success");
 
-  // ───────── Cobros / Datos bancarios (nuevo)
-  const [openPayout, setOpenPayout] = useState(false);
+  // Cobros / Datos bancarios
   const [payout, setPayout] = useState({
     holderName: "",
     docType: "DNI",
@@ -449,8 +525,7 @@ export default function ProfilePage() {
   const [payoutMsg, setPayoutMsg] = useState("");
   const [payoutMsgType, setPayoutMsgType] = useState("success");
 
-  // ───────── LinkedIn (solo Professional)
-  const [openLinkedin, setOpenLinkedin] = useState(false);
+  // LinkedIn
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [savingLinkedin, setSavingLinkedin] = useState(false);
   const [linkedinMsg, setLinkedinMsg] = useState("");
@@ -475,11 +550,10 @@ export default function ProfilePage() {
     }
   };
 
-  // ─── Carga inicial con buffer para evitar carrera
+  // carga inicial
   useEffect(() => {
-    let meWa = null; // buffer del WhatsApp del USER
+    let meWa = null;
 
-    // USER
     (async () => {
       try {
         const me = await getMyProfile();
@@ -513,8 +587,6 @@ export default function ProfilePage() {
           const line = buildAddressLabel(me?.address || {});
           if (line) setQuery(line);
         }
-
-        // guardar, NO setear
         meWa = me?.whatsapp || null;
       } catch {
         setMsgType("error");
@@ -524,14 +596,12 @@ export default function ProfilePage() {
       }
     })();
 
-    // PROFESSIONAL
     (async () => {
       try {
         const mine = await getMyProfessional();
         log("GET /professionals/me → whatsapp:", mine?.whatsapp);
         setHasProfessional(!!(mine && (mine._id || mine.exists)));
 
-        // Agenda
         if (mine?.availabilitySchedule) {
           const map =
             mine.availabilitySchedule instanceof Map
@@ -552,7 +622,6 @@ export default function ProfilePage() {
           );
         }
 
-        // Docs
         if (mine?.documents) {
           const cr = mine.documents.criminalRecord || null;
           const lic = mine.documents.license || null;
@@ -564,7 +633,6 @@ export default function ProfilePage() {
           );
         }
 
-        // WhatsApp: prioridad PRO; si no, USER (buffer)
         if (
           mine?.whatsapp &&
           (mine.whatsapp.number || mine.whatsapp.visible !== undefined)
@@ -582,7 +650,6 @@ export default function ProfilePage() {
           setWaVisible(!!meWa.visible);
         }
 
-        // Depósito/Seña
         if (mine) {
           setDepositEnabled(!!mine.depositEnabled);
           setDepositAmount(
@@ -592,10 +659,8 @@ export default function ProfilePage() {
           );
         }
 
-        // LinkedIn
         setLinkedinUrl(mine?.linkedinUrl || "");
 
-        // Cobros / Payout
         if (mine?.payout) {
           setPayout({
             holderName: mine.payout.holderName || "",
@@ -661,6 +726,7 @@ export default function ProfilePage() {
   const onChangeQuery = (e) => {
     setAllowSuggests(true);
     setQuery(e.target.value);
+    setDirtyAddress(true);
   };
 
   useEffect(() => {
@@ -679,21 +745,24 @@ export default function ProfilePage() {
     }, 300);
   }, [query, isFocused, allowSuggests]);
 
-  // 🔥 setea coords + label + autocompleta campos SIEMPRE
-  const applyGeoResult = useCallback((res) => {
-    if (!res) return;
-    const { label: lbl, addr: a, feature } = res;
-    setLabel(lbl || "");
-    setQuery(lbl || "");
-    setCoords({
-      lat: feature?.center?.[1] ?? coords?.lat ?? null,
-      lng: feature?.center?.[0] ?? coords?.lng ?? null,
-    });
-    setAddr((prev) => ({
-      ...prev,
-      ...(a || {}),
-    }));
-  }, [coords?.lat, coords?.lng]);
+  const applyGeoResult = useCallback(
+    (res) => {
+      if (!res) return;
+      const { label: lbl, addr: a, feature } = res;
+      setLabel(lbl || "");
+      setQuery(lbl || "");
+      setCoords({
+        lat: feature?.center?.[1] ?? coords?.lat ?? null,
+        lng: feature?.center?.[0] ?? coords?.lng ?? null,
+      });
+      setAddr((prev) => ({
+        ...prev,
+        ...(a || {}),
+      }));
+      setDirtyAddress(true);
+    },
+    [coords?.lat, coords?.lng]
+  );
 
   const pickSuggestion = (s) => {
     setSuggests([]);
@@ -701,10 +770,14 @@ export default function ProfilePage() {
     applyGeoResult(s);
   };
 
-  const onChange = (e) =>
+  const onChange = (e) => {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
-  const onChangeAddr = (e) =>
+    setDirtyAccount(true);
+  };
+  const onChangeAddr = (e) => {
     setAddr((a) => ({ ...a, [e.target.name]: e.target.value }));
+    setDirtyAddress(true);
+  };
 
   const useGPS = async () => {
     if (!navigator.geolocation) return;
@@ -719,13 +792,13 @@ export default function ProfilePage() {
           const q = `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
           setLabel(q);
           setQuery(q);
+          setDirtyAddress(true);
         }
       },
       () => {}
     );
   };
 
-  // Geocodificar campos escritos → autocompletar + centrar mapa
   const geocodeFromFields = async () => {
     const line = buildAddressLabel(addr);
     if (!line.trim()) return;
@@ -735,7 +808,6 @@ export default function ProfilePage() {
     } catch {}
   };
 
-  // ✅ essentialsOk
   const essentialsOk = useMemo(() => {
     const nameOk = form.name.trim().length >= 2;
     const addrOk =
@@ -748,7 +820,7 @@ export default function ProfilePage() {
     return Boolean(nameOk && addrOk);
   }, [form.name, addr]);
 
-  // Guardado
+  // Guardado (cuenta + whatsapp + ubicación)
   const saveCommon = async () => {
     log("saveCommon() start", {
       hasProfessional,
@@ -787,7 +859,6 @@ export default function ProfilePage() {
       }
     }
 
-    // --- Normalizar WhatsApp (pero NO parcheamos todavía)
     let e164 = "";
     const localDigits = onlyDigits(waNumber);
 
@@ -807,9 +878,8 @@ export default function ProfilePage() {
         return;
       }
     }
-    if (localDigits.length === 0) e164 = ""; // limpiar
+    if (localDigits.length === 0) e164 = "";
 
-    // --- 1) Guardar datos de USER
     const clean = {
       country: addr.country.trim(),
       state: addr.state.trim(),
@@ -843,7 +913,6 @@ export default function ProfilePage() {
       ...(updatedAtFromUpload ? { updatedAt: updatedAtFromUpload } : {}),
     }));
 
-    // --- 2) Si es PRO, sincronizar address/location
     if (hasProfessional) {
       try {
         await updateMyProfessional({
@@ -859,7 +928,6 @@ export default function ProfilePage() {
       }
     }
 
-    // --- 3) AHORA SÍ: PATCH WhatsApp al FINAL
     let waOk = true;
     try {
       if (hasProfessional) {
@@ -908,6 +976,23 @@ export default function ProfilePage() {
         ? "✅ Cambios guardados"
         : "Se guardaron tus datos, pero el WhatsApp no se actualizó."
     );
+
+    const now = Date.now();
+    if (dirtyAccount) {
+      setSavedAtAccount(now);
+      setDirtyAccount(false);
+      pushToast("✅ Cambios guardados en “Cuenta”.");
+    }
+    if (dirtyAddress) {
+      setSavedAtAddress(now);
+      setDirtyAddress(false);
+      pushToast("✅ Cambios guardados en “Ubicación”.");
+    }
+    if (dirtyWhatsApp) {
+      setSavedAtWhatsApp(now);
+      setDirtyWhatsApp(false);
+      if (waOk) pushToast("✅ Cambios guardados en “WhatsApp”.");
+    }
   };
 
   const invalids = useMemo(() => {
@@ -934,6 +1019,10 @@ export default function ProfilePage() {
       );
       await setAvailabilityMode("schedule");
       setAgendaMsg("✅ Agenda guardada y modo horario activo.");
+      const now = Date.now();
+      setSavedAtAgenda(now);
+      setDirtyAgenda(false);
+      pushToast("✅ Cambios guardados en “Disponibilidad”.");
     } catch {
       setAgendaMsg("No se pudo guardar la agenda.");
     } finally {
@@ -941,7 +1030,6 @@ export default function ProfilePage() {
     }
   };
 
-  // Depósito/Seña: guardar
   const onSaveDeposit = async () => {
     setSavingDeposit(true);
     try {
@@ -953,7 +1041,9 @@ export default function ProfilePage() {
         const n = Number(amt);
         if (!Number.isFinite(n) || n < MIN || n > MAX) {
           setDepositMsgType("error");
-          setDepositMsg(`El monto debe estar entre $${MIN.toLocaleString("es-AR")} y $${MAX.toLocaleString("es-AR")}.`);
+          setDepositMsg(
+            `El monto debe estar entre $${MIN.toLocaleString("es-AR")} y $${MAX.toLocaleString("es-AR")}.`
+          );
           setSavingDeposit(false);
           return;
         }
@@ -966,6 +1056,10 @@ export default function ProfilePage() {
 
       setDepositMsgType("success");
       setDepositMsg("✅ Preferencias de seña actualizadas.");
+      const now = Date.now();
+      setSavedAtDeposit(now);
+      setDirtyDeposit(false);
+      pushToast("✅ Cambios guardados en “Reservas y seña”.");
     } catch (e) {
       console.error(e);
       setDepositMsgType("error");
@@ -976,7 +1070,6 @@ export default function ProfilePage() {
     }
   };
 
-  // ▶️ NUEVO: guardar Cobros / Datos bancarios
   const onSavePayout = async () => {
     setSavingPayout(true);
     try {
@@ -1011,6 +1104,10 @@ export default function ProfilePage() {
       await updateMyPayout(clean);
       setPayoutMsgType("success");
       setPayoutMsg("✅ Datos bancarios actualizados.");
+      const now = Date.now();
+      setSavedAtPayout(now);
+      setDirtyPayout(false);
+      pushToast("✅ Cambios guardados en “Cobros”.");
     } catch (e) {
       console.error(e);
       setPayoutMsgType("error");
@@ -1021,22 +1118,27 @@ export default function ProfilePage() {
     }
   };
 
-  // ▶️ NUEVO: guardar LinkedIn
   const onSaveLinkedin = async () => {
     setSavingLinkedin(true);
     try {
       const clean = (linkedinUrl || "").trim();
       if (clean && !isValidLinkedinUrl(clean)) {
         setLinkedinMsgType("error");
-        setLinkedinMsg("Ingresá una URL válida de LinkedIn (debe comenzar con https://www.linkedin.com/...)");
+        setLinkedinMsg(
+          "Ingresá una URL válida de LinkedIn (debe comenzar con https://www.linkedin.com/...)"
+        );
         setSavingLinkedin(false);
         return;
       }
       await updateMyProfessional({
-        linkedinUrl: clean || "", // vacío = quitar
+        linkedinUrl: clean || "",
       });
       setLinkedinMsgType("success");
       setLinkedinMsg(clean ? "✅ LinkedIn actualizado." : "✅ LinkedIn eliminado.");
+      const now = Date.now();
+      setSavedAtLinkedin(now);
+      setDirtyLinkedin(false);
+      pushToast("✅ Cambios guardados en “LinkedIn”.");
     } catch (e) {
       setLinkedinMsgType("error");
       setLinkedinMsg("No se pudo guardar tu LinkedIn.");
@@ -1054,9 +1156,7 @@ export default function ProfilePage() {
     if (!hasProfessional || !file) return;
     try {
       setSavingDocs(true);
-      setDocsMsg(
-        which === "cr" ? "Subiendo certificado…" : "Subiendo matrícula…"
-      );
+      setDocsMsg(which === "cr" ? "Subiendo certificado…" : "Subiendo matrícula…");
       const fd = new FormData();
       fd.append("file", file);
       if (which === "cr" && docCrExpiresAt) fd.append("expiresAt", docCrExpiresAt);
@@ -1074,9 +1174,11 @@ export default function ProfilePage() {
       if (which === "cr") setDocCrFile(null);
       if (which === "lic") setDocLicFile(null);
       await refreshDocs();
-      setDocsMsg(
-        which === "cr" ? "✅ Antecedentes subidos." : "✅ Matrícula subida."
-      );
+      setDocsMsg(which === "cr" ? "✅ Antecedentes subidos." : "✅ Matrícula subida.");
+      const now = Date.now();
+      setSavedAtDocs(now);
+      setDirtyDocs(false);
+      pushToast("✅ Documento subido en “Documentos”.");
     } catch (e) {
       console.error(e);
       setDocsMsg("No se pudo subir el archivo.");
@@ -1099,13 +1201,14 @@ export default function ProfilePage() {
       bumpAvatarVersion();
       setMsgType("success");
       setMsg("✅ Foto eliminada");
+      setDirtyAccount(true);
     } catch {
       setMsgType("error");
       setMsg("No se pudo eliminar la foto.");
     }
   };
 
-  // ── FLAGS y progreso de perfil
+  // flags y progreso
   const role = (form.role || user?.role || "").toLowerCase();
   const isAdmin = role === "admin";
   const isProfessional = role === "professional";
@@ -1120,15 +1223,13 @@ export default function ProfilePage() {
     return !!tryNormalizeWa(waISO, waCountry.dial, waNumber);
   })();
 
-  // extras sólo para profesionales (opcionales pero suben %)
-  const hasSchedule = !hasProfessional || rows.some(r => r.active);
+  const hasSchedule = !hasProfessional || rows.some((r) => r.active);
   const hasAnyDoc = !!(documents?.criminalRecord?.url || documents?.license?.url);
   const hasLinkedin = hasProfessional && (() => {
     const u = (linkedinUrl || "").trim();
     return u && isValidLinkedinUrl(u);
   })();
 
-  // items de checklist (los 2 primeros son “esenciales”)
   const completionItems = [
     { key: "name", label: "Nombre", done: hasName, essential: true },
     { key: "addr", label: "Dirección completa", done: hasAddr, essential: true },
@@ -1140,20 +1241,71 @@ export default function ProfilePage() {
           { key: "docs", label: "Documentos cargados", done: hasAnyDoc },
           { key: "linkedin", label: "LinkedIn", done: hasLinkedin },
         ]
-      : [])
+      : []),
   ];
 
-  const doneCount = completionItems.filter(i => i.done).length;
+  const doneCount = completionItems.filter((i) => i.done).length;
   const totalCount = completionItems.length;
   const completionPct = Math.round((doneCount / Math.max(1, totalCount)) * 100);
 
-  // habilitación del botón “Ir a mi panel”
   const allowPanel = isAdmin || (hasName && hasAddr);
 
-  if (loadingProfile)
-    return <p className="text-center mt-28">Cargando tu perfil...</p>;
-  const headerInitial = (form.name?.[0] || "U").toUpperCase();
+  // Quick Nav
+  const sections = [
+    { id: "sec-cuenta", title: "Cuenta", dirty: dirtyAccount, savedAt: savedAtAccount, done: hasName && hasPhoto },
+    { id: "sec-whatsapp", title: "WhatsApp", dirty: dirtyWhatsApp, savedAt: savedAtWhatsApp, done: waOk },
+    { id: "sec-ubicacion", title: "Ubicación", dirty: dirtyAddress, savedAt: savedAtAddress, done: hasAddr },
+    ...(hasProfessional
+      ? [
+          { id: "sec-disponibilidad", title: "Disponibilidad", dirty: dirtyAgenda, savedAt: savedAtAgenda, done: hasSchedule },
+          { id: "sec-sena", title: "Reservas y seña", dirty: dirtyDeposit, savedAt: savedAtDeposit, done: true },
+          { id: "sec-cobros", title: "Cobros", dirty: dirtyPayout, savedAt: savedAtPayout, done: !!(payout.cbu || payout.alias) },
+          { id: "sec-documentos", title: "Documentos", dirty: dirtyDocs, savedAt: savedAtDocs, done: hasAnyDoc },
+          { id: "sec-linkedin", title: "LinkedIn", dirty: dirtyLinkedin, savedAt: savedAtLinkedin, done: hasLinkedin },
+        ]
+      : []),
+  ];
 
+  const anyDirty =
+    dirtyAccount ||
+    dirtyWhatsApp ||
+    dirtyAddress ||
+    dirtyAgenda ||
+    dirtyDeposit ||
+    dirtyPayout ||
+    dirtyDocs ||
+    dirtyLinkedin;
+
+  const firstDirty = sections.find((s) => s.dirty);
+
+  const scrollToId = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const guardadoChip = (dirty, savedAt) => {
+    if (dirty) return <span className="text-xs px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">Cambios sin guardar</span>;
+    if (savedAt)
+      return (
+        <span className="text-xs px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200" title={new Date(savedAt).toLocaleString()}>
+        Guardado {timeAgo(savedAt)}
+      </span>
+    );
+    return <span className="text-xs px-2 py-0.5 rounded-full border bg-gray-50 text-gray-700 border-gray-200">Sin cambios</span>;
+  };
+  
+  // chip estado booleano simple (para checklist)
+  const boolChip = (ok, on=true, off=true) => {
+    if (ok && on) return <span className="text-xs px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">completo</span>;
+    if (!ok && off) return <span className="text-xs px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">pendiente</span>;
+    return null;
+  };
+  
+  if (loadingProfile) return <p className="text-center mt-28">Cargando tu perfil...</p>;
+  
+  const headerInitial = (form.name?.[0] || "U").toUpperCase();
+  
   return (
     <>
       <Navbar />
@@ -1166,7 +1318,7 @@ export default function ProfilePage() {
             <>
               <span className="font-semibold">Completá tus datos</span>
               <span className="mx-1">·</span>
-              <span>Mientras más datos completes, más posibilidades hay de que <b>te contraten</b>.</span>
+              <span>Mientras más datos completes, más chances de que <b>te contraten</b>.</span>
             </>
           ) : (
             <>
@@ -1177,10 +1329,58 @@ export default function ProfilePage() {
           )
         }
       />
+  
+      {/* Barra de cambios sin guardar (global) */}
+      {anyDirty && (
+        <div className="fixed top-14 left-0 right-0 z-[90]">
+          <div className="mx-auto max-w-5xl px-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex items-center justify-between gap-3 shadow-sm">
+              <div>
+                Tienes cambios sin guardar {firstDirty ? <>en <b>{sections.find(s => s.id === firstDirty.id)?.title}</b></> : null}.
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-1 rounded-lg border border-amber-300 hover:bg-amber-100"
+                  onClick={() => firstDirty && scrollToId(firstDirty.id)}
+                  title="Ir a la sección con cambios"
+                >
+                  Ir a la sección
+                </button>
+                <button
+                  className="px-3 py-1 rounded-lg border hover:bg-white"
+                  onClick={() => {
+                    // Solo limpiamos flags de UI (no revertimos datos)
+                    setDirtyAccount(false);
+                    setDirtyWhatsApp(false);
+                    setDirtyAddress(false);
+                    setDirtyAgenda(false);
+                    setDirtyDeposit(false);
+                    setDirtyPayout(false);
+                    setDirtyDocs(false);
+                    setDirtyLinkedin(false);
+                  }}
+                  title="Descartar (solo limpia el indicador visual)"
+                >
+                  Descartar aviso
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+  
+      {/* Toasts globales */}
+      <Toasts
+        items={toasts}
+        onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))}
+      />
+  
       <div className="h-12 md:h-16" aria-hidden />
+  
+      {/* Progreso y checklist */}
       {!isAdmin && (
         <div className="bg-white px-4">
-          <div className="max-w-3xl mx-auto mt-4 md:mt-6">
+          <div className="max-w-5xl mx-auto mt-4 md:mt-6">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
@@ -1196,18 +1396,14 @@ export default function ProfilePage() {
                     )}
                   </div>
                 </div>
-
+  
                 <div className="hidden sm:block w-40">
                   <div className="h-2 rounded-full bg-white/60 overflow-hidden border border-amber-200">
-                    <div
-                      className="h-full bg-amber-500"
-                      style={{ width: `${completionPct}%` }}
-                    />
+                    <div className="h-full bg-amber-500" style={{ width: `${completionPct}%` }} />
                   </div>
                 </div>
               </div>
-
-              {/* checklist compacto */}
+  
               <div className="mt-3 flex flex-wrap gap-2">
                 {completionItems.map(it => (
                   <span
@@ -1227,280 +1423,274 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
-
-      {/* padding top real para despegar del navbar fijo */}
-      <section className="min-h-screen bg-white text-[#0a0e17] pt-5 md:pt-5 pb-24 px-4">
-        <div className="max-w-3xl mx-auto">
-          {/* Encabezado */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-12 w-12 rounded-full overflow-hidden bg-gray-200 grid place-items-center text-gray-700 font-bold ring-2 ring-white shadow">
-              {avatarPreview ? (
-                <img
-                  src={avatarPreview}
-                  alt="Avatar"
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                headerInitial
-              )}
-            </div>
-            <h1 className="text-3xl font-bold">Mi perfil</h1>
-          </div>
-
-          {msg && (
-            <div
-              className={`mb-6 rounded-lg border px-4 py-3 text-sm ${
-                msgType === "success"
-                  ? "bg-green-50 border-green-200 text-green-700"
-                  : "bg-red-50 border-red-200 text-red-700"
-              }`}
-            >
-              {msg}
-            </div>
-          )}
-
-          {/* CUENTA */}
-          <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-            <button
-              onClick={() => setOpenAccount((o) => !o)}
-              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
-            >
-              <div>
-                <h2 className="text-lg font-semibold">Cuenta</h2>
-                <p className="text-sm text-gray-500">Nombre, email, rol y foto</p>
+  
+      {/* Contenido principal con Quick Nav lateral */}
+      <section className="relative min-h-screen bg-white text-[#0a0e17] pt-5 md:pt-5 pb-24 px-4">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-8">
+          {/* Columna principal */}
+          <div>
+            {/* Encabezado */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-12 w-12 rounded-full overflow-hidden bg-gray-200 grid place-items-center text-gray-700 font-bold ring-2 ring-white shadow">
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
+                ) : (
+                  headerInitial
+                )}
               </div>
-              <Chevron open={openAccount} />
-            </button>
+              <h1 className="text-3xl font-bold">Mi perfil</h1>
+            </div>
+  
+            {msg && (
+              <div
+                className={`mb-6 rounded-lg border px-4 py-3 text-sm ${
+                  msgType === "success"
+                    ? "bg-green-50 border-green-200 text-green-700"
+                    : "bg-red-50 border-red-200 text-red-700"
+                }`}
+              >
+                {msg}
+              </div>
+            )}
+  
+            {/* CUENTA */}
+            <div id="sec-cuenta" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <button
+                onClick={() => setOpenAccount((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+              >
+                {/* IZQUIERDA: ocupa ancho, forzado a alineación izquierda */}
+                <div className="flex-1 min-w-0 text-left">
+                  <h2 className="text-lg font-semibold leading-tight">Cuenta</h2>
+                  <p className="text-sm text-gray-500 leading-snug truncate">Nombre, correo y foto</p>
+                </div>
 
-            {openAccount && (
-              <div className="px-5 pb-5">
-                <div className="space-y-5">
-                  {/* Foto de perfil */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Foto de perfil
-                    </label>
-                    <div className="flex items-center gap-4">
-                      <div className="relative">
-                        {avatarPreview ? (
-                          <img
-                            src={avatarPreview}
-                            alt="Preview"
-                            className="h-20 w-20 rounded-full object-cover ring-2 ring-gray-200"
-                          />
-                        ) : (
-                          <div className="h-20 w-20 rounded-full bg-gray-200 grid place-items-center text-gray-600">
-                            IMG
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer w-fit">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) {
-                                setAvatarFile(f);
-                                const url = URL.createObjectURL(f);
-                                setAvatarPreview(url);
-                                setMsgType("success");
-                                setMsg(
-                                  "Nueva foto seleccionada. No olvides “Guardar cambios”."
-                                );
-                              }
-                            }}
-                          />
-                          <span>Elegir archivo…</span>
-                        </label>
+                {/* DERECHA: chips + chevron, no se encoge */}
+                <div className="ml-3 flex items-center gap-3 shrink-0">
+                  {guardadoChip(dirtyAccount, savedAtAccount)}
+                  <Chevron open={openAccount} />
+                </div>
+              </button>
 
-                        {form.avatarUrl && !avatarFile && (
-                          <button
-                            type="button"
-                            className="text-sm text-rose-700 hover:underline w-fit"
-                            onClick={handleDeleteAvatar}
-                          >
-                            Quitar foto actual
-                          </button>
-                        )}
-                        {avatarFile && (
-                          <span className="text-xs text-gray-600">
-                            {avatarFile.name} — listo para subir.
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Nombre / email / rol */}
-                  <div>
-                    <input
-                      name="name"
-                      value={form.name}
-                      onChange={onChange}
-                      onBlur={() =>
-                        setForm(f => ({
-                          ...f,
-                          name: f.name
-                            .trim()
-                            .toLowerCase()
-                            .replace(/\s+/g, " ")
-                            .split(" ")
-                            .map(w => w.charAt(0).toLocaleUpperCase("es-AR") + w.slice(1))
-                            .join(" ")
-                            .slice(0, 50)
-                        }))
-                      }
-                      maxLength={50}
-                      className="w-full border rounded-lg px-4 py-2"
-                      placeholder="Tu nombre completo"
-                    />
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
+              {openAccount && (
+                <div className="px-5 pb-5">
+                  <div className="space-y-5">
                     <div>
-                      <label className="block text-sm font-medium mb-1">
-                        Email
-                      </label>
-                      <input
-                        value={form.email}
-                        disabled
-                        className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">
-                        Rol
-                      </label>
-                      <input
-                        value={form.role}
-                        disabled
-                        className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600 capitalize"
-                      />
-                    </div>
-                  </div>
-
-                  {/* ───────────────── WhatsApp ──────────────── */}
-                  <div className="border rounded-xl p-4">
-                    <div className="font-semibold mb-1">Compartir WhatsApp</div>
-                    <p className="text-xs text-gray-600 mb-3">
-                      Mostrá un botón de WhatsApp en tu perfil y al reservar. Elegí el país con la
-                      banderita y escribí el resto del número.
-                    </p>
-
-                    <div className="grid md:grid-cols-[240px_minmax(0,1fr)] gap-3">
-                      {/* selector de país */}
-                      <div className="relative">
-                        <label className="block text-xs text-gray-500 mb-1">
-                          País
-                        </label>
-                        <button
-                          ref={waAnchorRef}
-                          type="button"
-                          onClick={() => setWaOpen((o) => !o)}
-                          className="w-full h-10 px-3 rounded-lg border bg-white flex items-center justify-between cursor-pointer"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            <ReactCountryFlag
-                              svg
-                              countryCode={waCountry.iso}
-                              style={{ width: "1.1rem", height: "1.1rem" }}
+                      <label className="block text-sm font-medium mb-2">Foto de perfil</label>
+                      <div className="flex items-center gap-4">
+                        <div className="relative">
+                          {avatarPreview ? (
+                            <img
+                              src={avatarPreview}
+                              alt="Preview"
+                              className="h-20 w-20 rounded-full object-cover ring-2 ring-gray-200"
                             />
-                            <span className="text-sm">{waCountry.iso}</span>
-                            <span className="text-xs text-gray-500">
-                              {waCountry.dial}
+                          ) : (
+                            <div className="h-20 w-20 rounded-full bg-gray-200 grid place-items-center text-gray-600">
+                              IMG
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer w-fit">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) {
+                                  setAvatarFile(f);
+                                  const url = URL.createObjectURL(f);
+                                  setAvatarPreview(url);
+                                  setMsgType("success");
+                                  setMsg("Nueva foto seleccionada. No olvides “Guardar cambios”.");
+                                  setDirtyAccount(true);
+                                }
+                              }}
+                            />
+                            <span>Elegir archivo…</span>
+                          </label>
+  
+                          {form.avatarUrl && !avatarFile && (
+                            <button
+                              type="button"
+                              className="text-sm text-rose-700 hover:underline w-fit"
+                              onClick={handleDeleteAvatar}
+                            >
+                              Quitar foto actual
+                            </button>
+                          )}
+                          {avatarFile && (
+                            <span className="text-xs text-gray-600">
+                              {avatarFile.name} — listo para subir.
                             </span>
-                          </span>
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 20 20"
-                            className="text-gray-500"
-                          >
-                            <path fill="currentColor" d="M5 7l5 5 5-5z" />
-                          </svg>
-                        </button>
-
-                        <CountryDropdown
-                          open={waOpen}
-                          anchorRef={waAnchorRef}
-                          valueISO={waISO}
-                          onSelect={(iso) => setWaISO(iso)}
-                          onClose={() => setWaOpen(false)}
+                          )}
+                        </div>
+                      </div>
+                    </div>
+  
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Nombre</label>
+                      <input
+                        name="name"
+                        value={form.name}
+                        onChange={onChange}
+                        onBlur={() =>
+                          setForm(f => ({
+                            ...f,
+                            name: f.name
+                              .trim()
+                              .toLowerCase()
+                              .replace(/\s+/g, " ")
+                              .split(" ")
+                              .map(w => w.charAt(0).toLocaleUpperCase("es-AR") + w.slice(1))
+                              .join(" ")
+                              .slice(0, 50)
+                          }))
+                        }
+                        maxLength={50}
+                        className="w-full border rounded-lg px-4 py-2"
+                        placeholder="Tu nombre completo"
+                      />
+                    </div>
+  
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Email</label>
+                        <input
+                          value={form.email}
+                          disabled
+                          className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600"
                         />
                       </div>
-
-                      {/* número sin prefijo */}
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">
-                          Número{" "}
-                          <span className="text-gray-400">
-                            (sin el código {waCountry.dial})
-                          </span>
-                        </label>
-                        <div className="flex">
-                          <div className="h-10 px-2 shrink-0 flex items-center gap-1 border rounded-l-lg bg-gray-50 text-gray-700 text-sm">
-                            <ReactCountryFlag
-                              svg
-                              countryCode={waCountry.iso}
-                              style={{ width: "1rem", height: "1rem" }}
-                            />
-                            <span className="font-medium">{waCountry.iso}</span>
-                            <span className="text-gray-500">
-                              {waCountry.dial}
-                            </span>
-                          </div>
-                          <input
-                            inputMode="numeric"
-                            placeholder="tu número sin el prefijo"
-                            value={waNumber}
-                            onChange={(e) => {
-                              setWaErr("");
-                              setWaNumber(onlyDigits(e.target.value));
-                            }}
-                            onBlur={() => {
-                              if (!waNumber) return setWaErr("");
-                              const ok = !!tryNormalizeWa(
-                                waISO,
-                                waCountry.dial,
-                                waNumber
-                              );
-                              setWaErr(
-                                ok
-                                  ? ""
-                                  : `El número no parece válido para ${waCountry.name}.`
-                              );
-                            }}
-                            className={`flex-1 h-10 px-3 border border-l-0 rounded-r-lg ${
-                              waErr ? "border-rose-400" : ""
-                            }`}
-                          />
-                        </div>
-
-                        <label className="mt-3 inline-flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={waVisible}
-                            onChange={(e) => setWaVisible(e.target.checked)}
-                          />
-                          <span>Mostrar en mi perfil</span>
-                        </label>
-
-                        {waErr ? (
-                          <div className="text-[11px] text-rose-600 mt-1">
-                            {waErr}
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-gray-500 mt-1">
-                            Se usará para abrir WhatsApp (wa.me) desde tu perfil.
-                          </div>
-                        )}
+                        <label className="block text-sm font-medium mb-1">Rol</label>
+                        <input
+                          value={form.role}
+                          disabled
+                          className="w-full border rounded-lg px-4 py-2 bg-gray-100 text-gray-600 capitalize"
+                        />
                       </div>
                     </div>
+  
+                    <div className="flex justify-end">
+                      <button
+                        onClick={async () => {
+                          setSavingProfile(true);
+                          try {
+                            await saveCommon();
+                          } finally {
+                            setSavingProfile(false);
+                          }
+                        }}
+                        disabled={savingProfile}
+                        className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
+                      >
+                        {savingProfile ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                    </div>
                   </div>
+                </div>
+              )}
+            </div>
+  
+            {/* WHATSAPP */}
+            <div id="sec-whatsapp" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+            <button
+              onClick={() => setOpenWhatsApp((o) => !o)}
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+            >
+              {/* IZQUIERDA */}
+              <div className="flex-1 min-w-0 text-left">
+                <h2 className="text-lg font-semibold leading-tight">WhatsApp</h2>
+                <p className="text-sm text-gray-500 leading-snug truncate">
+                  Mostrá un botón de WhatsApp en tu perfil y durante la reserva
+                </p>
+              </div>
 
+              {/* DERECHA */}
+              <div className="ml-3 flex items-center gap-3 shrink-0">
+                {guardadoChip(dirtyWhatsApp, savedAtWhatsApp)}
+                <Chevron open={openWhatsApp} />
+              </div>
+            </button>
+  
+              {openWhatsApp && (
+                <div className="px-5 pb-5 space-y-4">
+                  <div className="grid md:grid-cols-[240px_minmax(0,1fr)] gap-3">
+                    <div className="relative">
+                      <label className="block text-xs text-gray-500 mb-1">País</label>
+                      <button
+                        ref={waAnchorRef}
+                        type="button"
+                        onClick={() => setWaOpen((o) => !o)}
+                        className="w-full h-10 px-3 rounded-lg border bg-white flex items-center justify-between cursor-pointer"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <ReactCountryFlag svg countryCode={waCountry.iso} style={{ width: "1.1rem", height: "1.1rem" }} />
+                          <span className="text-sm">{waCountry.iso}</span>
+                          <span className="text-xs text-gray-500">{waCountry.dial}</span>
+                        </span>
+                        <svg width="18" height="18" viewBox="0 0 20 20" className="text-gray-500">
+                          <path fill="currentColor" d="M5 7l5 5 5-5z" />
+                        </svg>
+                      </button>
+  
+                      <CountryDropdown
+                        open={waOpen}
+                        anchorRef={waAnchorRef}
+                        valueISO={waISO}
+                        onSelect={(iso) => { setWaISO(iso); setDirtyWhatsApp(true); }}
+                        onClose={() => setWaOpen(false)}
+                      />
+                    </div>
+  
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">
+                        Número <span className="text-gray-400">(sin el código {waCountry.dial})</span>
+                      </label>
+                      <div className="flex">
+                        <div className="h-10 px-2 shrink-0 flex items-center gap-1 border rounded-l-lg bg-gray-50 text-gray-700 text-sm">
+                          <ReactCountryFlag svg countryCode={waCountry.iso} style={{ width: "1rem", height: "1rem" }} />
+                          <span className="font-medium">{waCountry.iso}</span>
+                          <span className="text-gray-500">{waCountry.dial}</span>
+                        </div>
+                        <input
+                          inputMode="numeric"
+                          placeholder="tu número sin el prefijo"
+                          value={waNumber}
+                          onChange={(e) => {
+                            setWaErr("");
+                            setWaNumber(onlyDigits(e.target.value));
+                            setDirtyWhatsApp(true);
+                          }}
+                          onBlur={() => {
+                            if (!waNumber) return setWaErr("");
+                            const ok = !!tryNormalizeWa(waISO, waCountry.dial, waNumber);
+                            setWaErr(ok ? "" : `El número no parece válido para ${waCountry.name}.`);
+                          }}
+                          className={`flex-1 h-10 px-3 border border-l-0 rounded-r-lg ${waErr ? "border-rose-400" : ""}`}
+                        />
+                      </div>
+  
+                      <label className="mt-3 inline-flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={waVisible}
+                          onChange={(e) => { setWaVisible(e.target.checked); setDirtyWhatsApp(true); }}
+                        />
+                        <span>Mostrar en mi perfil</span>
+                      </label>
+  
+                      {waErr ? (
+                        <div className="text-[11px] text-rose-600 mt-1">{waErr}</div>
+                      ) : (
+                        <div className="text-[11px] text-gray-500 mt-1">Se usará para abrir WhatsApp (wa.me) desde tu perfil.</div>
+                      )}
+                    </div>
+                  </div>
+  
                   <div className="flex justify-end">
                     <button
                       onClick={async () => {
@@ -1514,533 +1704,661 @@ export default function ProfilePage() {
                       disabled={savingProfile}
                       className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
                     >
-                      {savingProfile ? "Guardando..." : "Guardar cambios"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 💳 RESERVAS Y SEÑA (solo Professional) */}
-          {hasProfessional && (
-            <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-              <button
-                onClick={() => setOpenDeposit((o) => !o)}
-                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
-              >
-                <div>
-                  <h2 className="text-lg font-semibold">Reservas y seña</h2>
-                  <p className="text-sm text-gray-500">
-                    Definí si pedís seña y el monto fijo en ARS
-                  </p>
-                </div>
-                <Chevron open={openDeposit} />
-              </button>
-
-              {openDeposit && (
-                <div className="px-5 pb-5 space-y-4">
-                  {depositMsg && (
-                    <div
-                      className={`rounded-lg border px-3 py-2 text-sm ${
-                        depositMsgType === "success"
-                          ? "bg-green-50 border-green-200 text-green-700"
-                          : "bg-red-50 border-red-200 text-red-700"
-                      }`}
-                    >
-                      {depositMsg}
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="inline-flex items-center gap-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={depositEnabled}
-                        onChange={(e) => setDepositEnabled(e.target.checked)}
-                      />
-                      <span>Requerir seña para reservar</span>
-                    </label>
-                    <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                      depositEnabled
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : "bg-gray-50 text-gray-700 border-gray-200"
-                    }`}>
-                      {depositEnabled ? "Activo" : "Inactivo"}
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Monto fijo de la seña (ARS)
-                    </label>
-                    <input
-                      type="number"
-                      min={2000}
-                      max={5000}
-                      step={100}
-                      inputMode="numeric"
-                      disabled={!depositEnabled}
-                      value={depositAmount}
-                      onChange={(e) => setDepositAmount(e.target.value)}
-                      className={`w-full border rounded-lg px-3 py-2 ${depositEnabled ? "bg-white" : "bg-gray-100 text-gray-500"}`}
-                      placeholder="Ej.: 3000"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Debe estar entre $2.000 y $5.000. Si desactivás la seña, tus clientes podrán reservar sin pasar por pago.
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      onClick={onSaveDeposit}
-                      disabled={savingDeposit}
-                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
-                    >
-                      {savingDeposit ? "Guardando…" : "Guardar preferencias"}
+                      {savingProfile ? "Guardando..." : "Guardar WhatsApp"}
                     </button>
                   </div>
                 </div>
               )}
             </div>
-          )}
-
-          {/* 💸 COBROS / DATOS BANCARIOS (solo Professional) */}
-          {hasProfessional && (
-            <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-              <button
-                onClick={() => setOpenPayout((o) => !o)}
-                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
-              >
-                <div>
-                  <h2 className="text-lg font-semibold">Cobros / Datos bancarios</h2>
-                  <p className="text-sm text-gray-500">Guardá tu CBU o Alias para recibir liquidaciones</p>
-                </div>
-                <Chevron open={openPayout} />
-              </button>
-
-              {openPayout && (
-                <div className="px-5 pb-5 space-y-4">
-                  {payoutMsg && (
-                    <div className={`rounded-lg border px-3 py-2 text-sm ${
-                      payoutMsgType === "success"
-                        ? "bg-green-50 border-green-200 text-green-700"
-                        : "bg-red-50 border-red-200 text-red-700"
-                    }`}>{payoutMsg}</div>
-                  )}
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Titular</label>
-                      <input
-                        value={payout.holderName}
-                        onChange={(e) => setPayout((p) => ({ ...p, holderName: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="Nombre y apellido como figura en el banco"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Tipo de documento</label>
-                      <select
-                        value={payout.docType}
-                        onChange={(e) => setPayout((p) => ({ ...p, docType: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2"
-                      >
-                        <option value="DNI">DNI</option>
-                        <option value="CUIT">CUIT</option>
-                        <option value="CUIL">CUIL</option>
-                        <option value="PAS">PAS</option>
-                        <option value="OTRO">OTRO</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">N° de documento</label>
-                      <input
-                        value={payout.docNumber}
-                        onChange={(e) => setPayout((p) => ({ ...p, docNumber: e.target.value.replace(/\D/g, "") }))}
-                        className="w-full border rounded-lg px-3 py-2"
-                        inputMode="numeric"
-                        placeholder="Solo números"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Banco</label>
-                      <input
-                        value={payout.bankName}
-                        onChange={(e) => setPayout((p) => ({ ...p, bankName: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="Nombre del banco (opcional)"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">CBU (22 dígitos)</label>
-                      <input
-                        value={payout.cbu}
-                        onChange={(e) => setPayout((p) => ({ ...p, cbu: e.target.value.replace(/\D/g, "") }))}
-                        className="w-full border rounded-lg px-3 py-2"
-                        inputMode="numeric"
-                        placeholder="Ej.: 2850590940090418135201"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Alias</label>
-                      <input
-                        value={payout.alias}
-                        onChange={(e) => setPayout((p) => ({ ...p, alias: e.target.value.toLowerCase() }))}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="tu.alias.banco"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Podés completar CBU o Alias.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      onClick={onSavePayout}
-                      disabled={savingPayout}
-                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
-                    >
-                      {savingPayout ? "Guardando…" : "Guardar datos bancarios"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 🔗 LINKEDIN (solo Professional) */}
-          {hasProfessional && (
-            <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
-              <button
-                onClick={() => setOpenLinkedin((o) => !o)}
-                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
-              >
-                <div>
-                  <h2 className="text-lg font-semibold">LinkedIn</h2>
-                  <p className="text-sm text-gray-500">
-                    Guardá el enlace a tu perfil de LinkedIn (se usa en las cards)
-                  </p>
-                </div>
-                <Chevron open={openLinkedin} />
-              </button>
-
-              {openLinkedin && (
-                <div className="px-5 pb-5 space-y-4">
-                  {linkedinMsg && (
-                    <div
-                      className={`rounded-lg border px-3 py-2 text-sm ${
-                        linkedinMsgType === "success"
-                          ? "bg-green-50 border-green-200 text-green-700"
-                          : "bg-red-50 border-red-200 text-red-700"
-                      }`}
-                    >
-                      {linkedinMsg}
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      URL de LinkedIn
-                    </label>
-                    <input
-                      value={linkedinUrl}
-                      onChange={(e) => setLinkedinUrl(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2"
-                      placeholder="https://www.linkedin.com/in/tu-usuario"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Debe comenzar con <code>https://www.linkedin.com/</code>. Si dejás vacío, se quitará el ícono.
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      onClick={onSaveLinkedin}
-                      disabled={savingLinkedin}
-                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
-                    >
-                      {savingLinkedin ? "Guardando…" : "Guardar LinkedIn"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* UBICACIÓN */}
-          <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+  
+            {/* UBICACIÓN */}
+            <div id="sec-ubicacion" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
             <button
               onClick={() => setOpenAddress((o) => !o)}
               className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
             >
-              <div>
-                <h2 className="text-lg font-semibold pr-40">Buscar dirección</h2>
-                <p className="text-sm text-gray-500">
-                  Ingresá una dirección, usá GPS o mové el punto en mapa
+              {/* IZQUIERDA */}
+              <div className="flex-1 min-w-0 text-left">
+                <h2 className="text-lg font-semibold leading-tight">Ubicación</h2>
+                <p className="text-sm text-gray-500 leading-snug truncate">
+                  Buscá tu dirección, usá GPS o mové el punto en el mapa
                 </p>
               </div>
-              <Chevron open={openAddress} />
+
+              {/* DERECHA */}
+              <div className="ml-3 flex items-center gap-3 shrink-0">
+                {guardadoChip(dirtyAddress, savedAtAddress)}
+                <Chevron open={openAddress} />
+              </div>
             </button>
 
-            {openAddress && (
-              <div className="px-5 pb-5">
-                <div className="mb-3">
-                  <label className="block text-sm font-medium mb-1">
-                    Buscar dirección
-                  </label>
-                  <input
-                    value={query}
-                    onChange={onChangeQuery}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => {
-                      setIsFocused(false);
-                      setTimeout(() => setSuggests([]), 100);
-                    }}
-                    placeholder="Ej.: Av. Siempre Viva 742, Springfield"
-                    className="w-full border rounded-lg px-4 py-2"
-                  />
-                  {isFocused && allowSuggests && suggests.length > 0 && (
-                    <div className="mt-2 rounded-lg border bg-white shadow-sm overflow-hidden max-h-64 overflow-y-auto">
-                      {suggests.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onMouseDown={() => pickSuggestion(s)}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-2 mb-4">
-                  <button
-                    onClick={useGPS}
-                    className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black cursor-pointer"
-                  >
-                    Usar GPS
-                  </button>
-                  <button
-                    onClick={geocodeFromFields}
-                    className="px-3 py-2 rounded border bg-white hover:bg-gray-50 cursor-pointer"
-                  >
-                    Geocodificar campos
-                  </button>
-                </div>
-
-                {/* Campos humanos */}
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm mb-1">País *</label>
+              {openAddress && (
+                <div className="px-5 pb-5">
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium mb-1">Buscar dirección</label>
                     <input
-                      name="country"
-                      value={addr.country}
-                      onChange={onChangeAddr}
+                      value={query}
+                      onChange={onChangeQuery}
+                      onFocus={() => setIsFocused(true)}
+                      onBlur={() => {
+                        setIsFocused(false);
+                        setTimeout(() => setSuggests([]), 100);
+                      }}
+                      placeholder="Ej.: Av. Siempre Viva 742, Springfield"
                       className="w-full border rounded-lg px-4 py-2"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm mb-1">
-                      Provincia / Estado *
-                    </label>
-                    <input
-                      name="state"
-                      value={addr.state}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm mb-1">Ciudad *</label>
-                    <input
-                      name="city"
-                      value={addr.city}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm mb-1">Código Postal *</label>
-                    <input
-                      name="postalCode"
-                      value={addr.postalCode}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
-                  </div>
-                  <div className="md:col-span-2 grid md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="block text-sm mb-1">Calle *</label>
-                      <input
-                        name="street"
-                        value={addr.street}
-                        onChange={onChangeAddr}
-                        className="w-full border rounded-lg px-4 py-2"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm mb-1">Número *</label>
-                      <input
-                        name="number"
-                        value={addr.number}
-                        onChange={onChangeAddr}
-                        className="w-full border rounded-lg px-4 py-2"
-                      />
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm mb-1">
-                      Depto / Piso / Unidad
-                    </label>
-                    <input
-                      name="unit"
-                      value={addr.unit}
-                      onChange={onChangeAddr}
-                      className="w-full border rounded-lg px-4 py-2"
-                    />
-                  </div>
-                </div>
-
-                {/* Mapa con arrastre */}
-                <div className="mt-4">
-                  <div className="text-sm text-gray-600 mb-2">
-                    {coords ? (
-                      <>
-                        Coordenadas:{" "}
-                        <b>
-                          {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
-                        </b>
-                        {label ? <> · {label}</> : null}
-                      </>
-                    ) : (
-                      <>Elegí una sugerencia, usá GPS o arrastrá el punto.</>
+                    {isFocused && allowSuggests && suggests.length > 0 && (
+                      <div className="mt-2 rounded-lg border bg-white shadow-sm overflow-hidden max-h-64 overflow-y-auto">
+                        {suggests.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onMouseDown={() => pickSuggestion(s)}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <div className="rounded-xl overflow-hidden border">
-                    <MapCanvas
-                      center={coords || { lat: -34.6037, lng: -58.3816 }}
-                      markers={[]}
-                      radiusKm={null}
-                      zoom={coords ? 15 : 12}
-                      draggableOrigin
-                      onOriginDragEnd={async ({ lat, lng }) => {
-                        setCoords({ lat, lng });
+  
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      onClick={useGPS}
+                      className="px-3 py-2 rounded bg-[#111827] text-white hover:bg-black cursor-pointer"
+                    >
+                      Usar GPS
+                    </button>
+                    <button
+                      onClick={geocodeFromFields}
+                      className="px-3 py-2 rounded border bg-white hover:bg-gray-50 cursor-pointer"
+                    >
+                      Geocodificar campos
+                    </button>
+                  </div>
+  
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm mb-1">País *</label>
+                      <input name="country" value={addr.country} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Provincia / Estado *</label>
+                      <input name="state" value={addr.state} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Ciudad *</label>
+                      <input name="city" value={addr.city} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Código Postal *</label>
+                      <input name="postalCode" value={addr.postalCode} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    </div>
+                    <div className="md:col-span-2 grid md:grid-cols-3 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm mb-1">Calle *</label>
+                        <input name="street" value={addr.street} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm mb-1">Número *</label>
+                        <input name="number" value={addr.number} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm mb-1">Depto / Piso / Unidad</label>
+                      <input name="unit" value={addr.unit} onChange={onChangeAddr} className="w-full border rounded-lg px-4 py-2" />
+                    </div>
+                  </div>
+  
+                  <div className="mt-4">
+                    <div className="text-sm text-gray-600 mb-2">
+                      {coords ? (
+                        <>
+                          Coordenadas: <b>{coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}</b>
+                          {label ? <> · {label}</> : null}
+                        </>
+                      ) : (
+                        <>Elegí una sugerencia, usá GPS o arrastrá el punto.</>
+                      )}
+                    </div>
+                    <div className="rounded-xl overflow-hidden border">
+                      <MapCanvas
+                        center={coords || { lat: -34.6037, lng: -58.3816 }}
+                        markers={[]}
+                        radiusKm={null}
+                        zoom={coords ? 15 : 12}
+                        draggableOrigin
+                        onOriginDragEnd={async ({ lat, lng }) => {
+                          setCoords({ lat, lng });
+                          try {
+                            const res = await reverseGeocodeFull(lat, lng);
+                            applyGeoResult({ ...res, feature: { center: [lng, lat] } });
+                          } catch {
+                            const nice = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                            setLabel(nice);
+                            setQuery(nice);
+                            setDirtyAddress(true);
+                          }
+                          setAllowSuggests(false);
+                          setSuggests([]);
+                        }}
+                      />
+                    </div>
+                  </div>
+  
+                  <div className="flex justify-end mt-4">
+                    <button
+                      onClick={async () => {
+                        setSavingProfile(true);
                         try {
-                          const res = await reverseGeocodeFull(lat, lng);
-                          applyGeoResult({ ...res, feature: { center: [lng, lat] } });
-                        } catch {
-                          const nice = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-                          setLabel(nice);
-                          setQuery(nice);
+                          await saveCommon();
+                        } finally {
+                          setSavingProfile(false);
                         }
-                        setAllowSuggests(false);
-                        setSuggests([]);
                       }}
-                    />
+                      disabled={savingProfile}
+                      className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white cursor-pointer"
+                    >
+                      {savingProfile ? "Guardando..." : "Guardar ubicación"}
+                    </button>
                   </div>
                 </div>
+              )}
+            </div>
 
-                <div className="flex justify-end mt-4">
-                  <button
-                    onClick={async () => {
-                      setSavingProfile(true);
-                      try {
-                        await saveCommon();
-                      } finally {
-                        setSavingProfile(false);
-                      }
-                    }}
-                    disabled={savingProfile}
-                    className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white cursor-pointer"
-                  >
-                    {savingProfile ? "Guardando..." : "Guardar ubicación"}
-                  </button>
+            {/* DISPONIBILIDAD (pro) */}
+            {hasProfessional && (
+              <div id="sec-disponibilidad" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <button
+                onClick={() => setOpenAvailability((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+              >
+                {/* IZQUIERDA */}
+                <div className="flex-1 min-w-0 text-left">
+                  <h2 className="text-lg font-semibold leading-tight">Disponibilidad</h2>
+                  <p className="text-sm text-gray-500 leading-snug truncate">
+                    Definí días y horarios
+                  </p>
                 </div>
+
+                {/* DERECHA */}
+                <div className="ml-3 flex items-center gap-3 shrink-0">
+                  {guardadoChip(dirtyAgenda, savedAtAgenda)}
+                  <Chevron open={openAvailability} />
+                </div>
+              </button>
+  
+                {openAvailability && (
+                  <div className="px-5 pb-5">
+                    {loadingAgenda ? (
+                      <p className="text-gray-600 mt-2">Cargando…</p>
+                    ) : (
+                      <>
+                        {agendaMsg && <div className="mt-2 text-sm">{agendaMsg}</div>}
+                        <div className="mt-3 space-y-3">
+                          {DAYS.map((d, idx) => {
+                            const inactive = !rows[idx].active;
+                            return (
+                              <div
+                                key={d.key}
+                                className={`flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl ${
+                                  inactive ? "bg-gray-50 border-gray-200" : "bg-white border-gray-300"
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 min-w-[180px]">
+                                  <input
+                                    id={`day-${d.key}`}
+                                    type="checkbox"
+                                    checked={rows[idx].active}
+                                    onChange={(e) => {
+                                      setRows((a) => a.map((r, i) => (i === idx ? { ...r, active: e.target.checked } : r)));
+                                      setDirtyAgenda(true);
+                                    }}
+                                    className="h-5 w-5 cursor-pointer"
+                                    aria-describedby={`day-help-${d.key}`}
+                                  />
+                                  <label htmlFor={`day-${d.key}`} className="cursor-pointer select-none">{d.label}</label>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ml-1 ${inactive ? "bg-gray-200 text-gray-600" : "bg-emerald-100 text-emerald-700"}`}>
+                                    {inactive ? "Inactivo" : "Activo"}
+                                  </span>
+                                </div>
+  
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:ml-auto w-full sm:w-auto">
+                                  {inactive ? (
+                                    <p id={`day-help-${d.key}`} className="text-xs text-gray-500 sm:mr-2">🔒 Activa el día para editar los horarios.</p>
+                                  ) : null}
+  
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-600">De</span>
+                                    <input
+                                      type="time"
+                                      step="900"
+                                      value={rows[idx].from}
+                                      disabled={inactive}
+                                      onChange={(e) => {
+                                        setRows((a) => a.map((r, i) => (i === idx ? { ...r, from: e.target.value } : r)));
+                                        setDirtyAgenda(true);
+                                      }}
+                                      title={inactive ? "Activa el día para editar" : "Editar hora de inicio"}
+                                      className={`border rounded-lg px-3 py-2 text-sm transition ${
+                                        inactive ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed" : "bg-white border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-300"
+                                      }`}
+                                    />
+                                  </div>
+  
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-600">a</span>
+                                    <input
+                                      type="time"
+                                      step="900"
+                                      value={rows[idx].to}
+                                      disabled={inactive}
+                                      onChange={(e) => {
+                                        setRows((a) => a.map((r, i) => (i === idx ? { ...r, to: e.target.value } : r)));
+                                        setDirtyAgenda(true);
+                                      }}
+                                      title={inactive ? "Activa el día para editar" : "Editar hora de fin"}
+                                      className={`border rounded-lg px-3 py-2 text-sm transition ${
+                                        inactive ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed" : "bg-white border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-300"
+                                      }`}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-end gap-3 mt-4">
+                          <button
+                            onClick={() =>
+                              { setRows(DAYS.map((d) => ({ key: d.key, active: false, from: "09:00", to: "18:00" }))); setDirtyAgenda(true); }
+                            }
+                            className="px-4 py-2 rounded border cursor-pointer"
+                          >
+                            Restablecer
+                          </button>
+                          <button
+                            onClick={onSaveAgenda}
+                            disabled={savingAgenda}
+                            className="px-4 py-2 rounded bg-[#0a0e17] text-white cursor-pointer"
+                          >
+                            {savingAgenda ? "Guardando…" : "Guardar agenda"}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
-          </div>
+  
+            {/* RESERVAS Y SEÑA (pro) */}
+            {hasProfessional && (
+              <div id="sec-sena" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <button
+                onClick={() => setOpenDeposit((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+              >
+                {/* IZQUIERDA */}
+                <div className="flex-1 min-w-0 text-left">
+                  <h2 className="text-lg font-semibold leading-tight">Reservas y seña</h2>
+                  <p className="text-sm text-gray-500 leading-snug truncate">
+                    Elegí si pedís seña y el monto fijo en ARS
+                  </p>
+                </div>
 
-          {/* DOCUMENTOS (solo Professional) */}
-          {hasProfessional && (
-            <div className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+                {/* DERECHA */}
+                <div className="ml-3 flex items-center gap-3 shrink-0">
+                  {guardadoChip(dirtyDeposit, savedAtDeposit)}
+                  <Chevron open={openDeposit} />
+                </div>
+              </button>
+
+                {openDeposit && (
+                  <div className="px-5 pb-5 space-y-4">
+                    {depositMsg && (
+                      <div
+                        className={`rounded-lg border px-3 py-2 text-sm ${
+                          depositMsgType === "success"
+                            ? "bg-green-50 border-green-200 text-green-700"
+                            : "bg-red-50 border-red-200 text-red-700"
+                        }`}
+                      >
+                        {depositMsg}
+                      </div>
+                    )}
+  
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="inline-flex items-center gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={depositEnabled}
+                          onChange={(e) => { setDepositEnabled(e.target.checked); setDirtyDeposit(true); }}
+                        />
+                        <span>Requerir seña para reservar</span>
+                      </label>
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                        depositEnabled
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-gray-50 text-gray-700 border-gray-200"
+                      }`}>
+                        {depositEnabled ? "Activo" : "Inactivo"}
+                      </span>
+                    </div>
+  
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Monto fijo de la seña (ARS)</label>
+                      <input
+                        type="number"
+                        min={2000}
+                        max={5000}
+                        step={100}
+                        inputMode="numeric"
+                        disabled={!depositEnabled}
+                        value={depositAmount}
+                        onChange={(e) => { setDepositAmount(e.target.value); setDirtyDeposit(true); }}
+                        className={`w-full border rounded-lg px-3 py-2 ${depositEnabled ? "bg-white" : "bg-gray-100 text-gray-500"}`}
+                        placeholder="Ej.: 3000"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Debe estar entre $2.000 y $5.000. Si desactivás la seña, tus clientes podrán reservar sin pasar por pago.
+                      </p>
+                    </div>
+  
+                    <div className="flex justify-end">
+                      <button
+                        onClick={onSaveDeposit}
+                        disabled={savingDeposit}
+                        className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
+                      >
+                        {savingDeposit ? "Guardando…" : "Guardar preferencias"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+  
+            {/* COBROS / DATOS BANCARIOS (pro) */}
+            {hasProfessional && (
+              <div id="sec-cobros" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <button
+                onClick={() => setOpenPayout((o) => !o)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+              >
+                {/* IZQUIERDA */}
+                <div className="flex-1 min-w-0 text-left">
+                  <h2 className="text-lg font-semibold leading-tight">Cobros / Datos bancarios</h2>
+                  <p className="text-sm text-gray-500 leading-snug truncate">
+                    Guardá tu CBU o Alias para recibir pagos
+                  </p>
+                </div>
+
+                {/* DERECHA */}
+                <div className="ml-3 flex items-center gap-3 shrink-0">
+                  {guardadoChip(dirtyPayout, savedAtPayout)}
+                  <Chevron open={openPayout} />
+                </div>
+              </button>
+  
+                {openPayout && (
+                  <div className="px-5 pb-5 space-y-4">
+                    {payoutMsg && (
+                      <div className={`rounded-lg border px-3 py-2 text-sm ${
+                        payoutMsgType === "success" ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"
+                      }`}>{payoutMsg}</div>
+                    )}
+  
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Titular</label>
+                        <input
+                          value={payout.holderName}
+                          onChange={(e) => { setPayout((p) => ({ ...p, holderName: e.target.value })); setDirtyPayout(true); }}
+                          className="w-full border rounded-lg px-3 py-2"
+                          placeholder="Nombre y apellido como figura en el banco"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Tipo de documento</label>
+                        <select
+                          value={payout.docType}
+                          onChange={(e) => { setPayout((p) => ({ ...p, docType: e.target.value })); setDirtyPayout(true); }}
+                          className="w-full border rounded-lg px-3 py-2"
+                        >
+                          <option value="DNI">DNI</option>
+                          <option value="CUIT">CUIT</option>
+                          <option value="CUIL">CUIL</option>
+                          <option value="PAS">PAS</option>
+                          <option value="OTRO">OTRO</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">N° de documento</label>
+                        <input
+                          value={payout.docNumber}
+                          onChange={(e) => { setPayout((p) => ({ ...p, docNumber: e.target.value.replace(/\D/g, "") })); setDirtyPayout(true); }}
+                          className="w-full border rounded-lg px-3 py-2"
+                          inputMode="numeric"
+                          placeholder="Solo números"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Banco</label>
+                        <input
+                          value={payout.bankName}
+                          onChange={(e) => { setPayout((p) => ({ ...p, bankName: e.target.value })); setDirtyPayout(true); }}
+                          className="w-full border rounded-lg px-3 py-2"
+                          placeholder="Nombre del banco (opcional)"
+                        />
+                      </div>
+                    </div>
+  
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">CBU (22 dígitos)</label>
+                        <input
+                          value={payout.cbu}
+                          onChange={(e) => { setPayout((p) => ({ ...p, cbu: e.target.value.replace(/\D/g, "") })); setDirtyPayout(true); }}
+                          className="w-full border rounded-lg px-3 py-2"
+                          inputMode="numeric"
+                          placeholder="Ej.: 2850590940090418135201"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Alias</label>
+                        <input
+                          value={payout.alias}
+                          onChange={(e) => { setPayout((p) => ({ ...p, alias: e.target.value.toLowerCase() })); setDirtyPayout(true); }}
+                          className="w-full border rounded-lg px-3 py-2"
+                          placeholder="tu.alias.banco"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Podés completar CBU o Alias.</p>
+                      </div>
+                    </div>
+  
+                    <div className="flex justify-end">
+                      <button
+                        onClick={onSavePayout}
+                        disabled={savingPayout}
+                        className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
+                      >
+                        {savingPayout ? "Guardando…" : "Guardar datos bancarios"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+  
+            {/* DOCUMENTOS (pro) */}
+            {hasProfessional && (
+              <div id="sec-documentos" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
               <button
                 onClick={() => setOpenDocuments((o) => !o)}
                 className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
               >
-                <div>
-                  <h2 className="text-lg font-semibold">Documentos</h2>
-                  <p className="text-sm text-gray-500">
-                    Antecedentes penales y matrícula
+                {/* IZQUIERDA */}
+                <div className="flex-1 min-w-0 text-left">
+                  <h2 className="text-lg font-semibold leading-tight">Documentos</h2>
+                  <p className="text-sm text-gray-500 leading-snug truncate">
+                    Antecedentes y matrícula (PDF)
                   </p>
                 </div>
-                <Chevron open={openDocuments} />
+
+                {/* DERECHA */}
+                <div className="ml-3 flex items-center gap-3 shrink-0">
+                  {guardadoChip(dirtyDocs, savedAtDocs)}
+                  <Chevron open={openDocuments} />
+                </div>
               </button>
-
-              {openDocuments && (
-                <div className="px-5 pb-5">
-                  {docsMsg && (
-                    <div className="mb-3 text-sm rounded-lg px-3 py-2 border bg-indigo-50 border-indigo-200 text-indigo-700">
-                      {docsMsg}
-                    </div>
-                  )}
-
-                  {/* Antecedentes penales */}
-                  <div className="p-4 border rounded-xl mb-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold">
-                            Certificado de antecedentes
-                          </h3>
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full border ${
-                              documents?.criminalRecord?.url
-                                ? crExpired
-                                  ? "bg-rose-50 text-rose-700 border-rose-200"
-                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-gray-50 text-gray-700 border-gray-200"
-                            }`}
-                          >
-                            {documents?.criminalRecord?.url
-                              ? crExpired
-                                ? "vencido"
-                                : "vigente"
-                              : "pendiente"}
-                          </span>
+  
+                {openDocuments && (
+                  <div className="px-5 pb-5">
+                    {docsMsg && (
+                      <div className="mb-3 text-sm rounded-lg px-3 py-2 border bg-indigo-50 border-indigo-200 text-indigo-700">
+                        {docsMsg}
+                      </div>
+                    )}
+  
+                    {/* Antecedentes penales */}
+                    <div className="p-4 border rounded-xl mb-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold">Certificado de antecedentes</h3>
+                            <span
+                              className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                                documents?.criminalRecord?.url
+                                  ? crExpired
+                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-gray-50 text-gray-700 border-gray-200"
+                              }`}
+                            >
+                              {documents?.criminalRecord?.url ? (crExpired ? "vencido" : "vigente") : "pendiente"}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            Elegí el PDF y se sube automáticamente.{" "}
+                            <span className="text-gray-500">(Si querés guardar el vencimiento, elegilo antes de subir.)</span>
+                          </p>
+                          {documents?.criminalRecord?.url && (
+                            <a
+                              href={documents.criminalRecord.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-indigo-700 hover:underline"
+                            >
+                              Ver archivo actual
+                            </a>
+                          )}
                         </div>
-                        <p className="text-sm text-gray-600">
-                          Elegí el PDF y se sube automáticamente.{" "}
-                          <span className="text-gray-500">
-                            (Si querés guardar el vencimiento, elegilo antes de
-                            seleccionar el PDF).
-                          </span>
-                        </p>
-                        {documents?.criminalRecord?.url && (
-                          <a
-                            href={documents.criminalRecord.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm text-indigo-700 hover:underline"
+                        <div className="text-xs text-gray-600">{savingDocs ? "Procesando…" : null}</div>
+                      </div>
+  
+                      <div className="mt-3 grid sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm mb-1">Archivo (PDF)</label>
+                          <label
+                            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer ${
+                              savingDocs ? "opacity-60 pointer-events-none" : ""
+                            }`}
+                            title="Seleccionar archivo (se sube automáticamente)"
                           >
-                            Ver archivo actual
-                          </a>
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const f = e.target.files?.[0];
+                                if (!f) return;
+                                setDocCrFile(f);
+                                await autoUpload({ which: "cr", file: f });
+                                e.target.value = "";
+                              }}
+                            />
+                            <span>{savingDocs ? "Subiendo…" : "Elegir archivo…"}</span>
+                          </label>
+                          <div className="text-xs text-gray-600 mt-1">
+                            {documents?.criminalRecord?.url ? "Archivo cargado" : "Ningún archivo seleccionado"}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-1">Vence (opcional)</label>
+                          <input
+                            type="date"
+                            value={docCrExpiresAt}
+                            onChange={(e) => { setDocCrExpiresAt(e.target.value); setDirtyDocs(true); }}
+                            onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                            className="w-full border rounded-lg px-3 py-2 cursor-pointer"
+                          />
+                          {documents?.criminalRecord?.expiresAt && (
+                            <div className="text-xs text-gray-600 mt-1">
+                              Actual: {new Date(documents.criminalRecord.expiresAt).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+  
+                      <div className="mt-3 flex items-center gap-2">
+                        {documents?.criminalRecord && (
+                          <button
+                            role="button"
+                            className="px-3 py-1.5 rounded border border-rose-300 text-rose-700 hover:bg-rose-50 cursor-pointer"
+                            onClick={async () => {
+                              setSavingDocs(true);
+                              try {
+                                await deleteProfessionalDoc("criminal-record");
+                                await refreshDocs();
+                                setDocsMsg("Certificado eliminado.");
+                                setDirtyDocs(true);
+                              } finally {
+                                setSavingDocs(false);
+                              }
+                            }}
+                            title="Eliminar certificado"
+                          >
+                            Eliminar certificado
+                          </button>
                         )}
                       </div>
-                      <div className="text-xs text-gray-600">
-                        {savingDocs ? "Procesando…" : null}
-                      </div>
                     </div>
-
-                    <div className="mt-3 grid sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm mb-1">
-                          Archivo (PDF)
-                        </label>
+  
+                    {/* Matrícula */}
+                    <div className="p-4 border rounded-xl">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold">Matrícula profesional</h3>
+                            <span
+                              className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                                documents?.license?.url
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-gray-50 text-gray-700 border-gray-200"
+                              }`}
+                            >
+                              {documents?.license?.url ? "cargada" : "pendiente"}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600">Elegí el PDF y se sube automáticamente.</p>
+                          {documents?.license?.url && (
+                            <a
+                              href={documents.license.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-indigo-700 hover:underline"
+                            >
+                              Ver archivo actual
+                            </a>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-600">{savingDocs ? "Procesando…" : null}</div>
+                      </div>
+  
+                      <div className="mt-3">
+                        <label className="block text-sm mb-1">Archivo (PDF)</label>
                         <label
                           className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer ${
                             savingDocs ? "opacity-60 pointer-events-none" : ""
@@ -2054,348 +2372,163 @@ export default function ProfilePage() {
                             onChange={async (e) => {
                               const f = e.target.files?.[0];
                               if (!f) return;
-                              setDocCrFile(f);
-                              await autoUpload({ which: "cr", file: f });
+                              setDocLicFile(f);
+                              await autoUpload({ which: "lic", file: f });
                               e.target.value = "";
                             }}
                           />
                           <span>{savingDocs ? "Subiendo…" : "Elegir archivo…"}</span>
                         </label>
                         <div className="text-xs text-gray-600 mt-1">
-                          {documents?.criminalRecord?.url
-                            ? "Archivo cargado"
-                            : "Ningún archivo seleccionado"}
+                          {documents?.license?.url ? "Archivo cargado" : "Ningún archivo seleccionado"}
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-sm mb-1">
-                          Vence (opcional)
-                        </label>
-                        <input
-                          type="date"
-                          value={docCrExpiresAt}
-                          onChange={(e) => setDocCrExpiresAt(e.target.value)}
-                          onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                          className="w-full border rounded-lg px-3 py-2 cursor-pointer"
-                        />
-
-                        {documents?.criminalRecord?.expiresAt && (
-                          <div className="text-xs text-gray-600 mt-1">
-                            Actual:{" "}
-                            {new Date(
-                              documents.criminalRecord.expiresAt
-                            ).toLocaleDateString()}
-                          </div>
+  
+                      <div className="mt-3 flex items-center gap-2">
+                        {documents?.license && (
+                          <button
+                            role="button"
+                            className="px-3 py-1.5 rounded border border-rose-300 text-rose-700 hover:bg-rose-50 cursor-pointer"
+                            onClick={async () => {
+                              setSavingDocs(true);
+                              try {
+                                await deleteProfessionalDoc("license");
+                                await refreshDocs();
+                                setDocsMsg("Matrícula eliminada.");
+                                setDirtyDocs(true);
+                              } finally {
+                                setSavingDocs(false);
+                              }
+                            }}
+                            title="Eliminar matrícula"
+                          >
+                            Eliminar matrícula
+                          </button>
                         )}
                       </div>
                     </div>
-
-                    <div className="mt-3 flex items-center gap-2">
-                      {documents?.criminalRecord && (
-                        <button
-                          role="button"
-                          className="px-3 py-1.5 rounded border border-rose-300 text-rose-700 hover:bg-rose-50 cursor-pointer"
-                          onClick={async () => {
-                            setSavingDocs(true);
-                            try {
-                              await deleteProfessionalDoc("criminal-record");
-                              await refreshDocs();
-                              setDocsMsg("Certificado eliminado.");
-                            } finally {
-                              setSavingDocs(false);
-                            }
-                          }}
-                          title="Eliminar certificado"
-                        >
-                          Eliminar certificado
-                        </button>
-                      )}
-                    </div>
                   </div>
-
-                  {/* Matrícula */}
-                  <div className="p-4 border rounded-xl">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold">Matrícula profesional</h3>
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full border ${
-                              documents?.license?.url
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-gray-50 text-gray-700 border-gray-200"
-                            }`}
-                          >
-                            {documents?.license?.url ? "cargada" : "pendiente"}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          Elegí el PDF y se sube automáticamente.
-                        </p>
-                        {documents?.license?.url && (
-                          <a
-                            href={documents.license.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm text-indigo-700 hover:underline"
-                          >
-                            Ver archivo actual
-                          </a>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-600">
-                        {savingDocs ? "Procesando…" : null}
-                      </div>
-                    </div>
-
-                    <div className="mt-3">
-                      <label className="block text-sm mb-1">Archivo (PDF)</label>
-                      <label
-                        className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 cursor-pointer ${
-                          savingDocs ? "opacity-60 pointer-events-none" : ""
-                        }`}
-                        title="Seleccionar archivo (se sube automáticamente)"
-                      >
-                        <input
-                          type="file"
-                          accept="application/pdf"
-                          className="hidden"
-                          onChange={async (e) => {
-                            const f = e.target.files?.[0];
-                            if (!f) return;
-                            setDocLicFile(f);
-                            await autoUpload({ which: "lic", file: f });
-                            e.target.value = "";
-                          }}
-                        />
-                        <span>{savingDocs ? "Subiendo…" : "Elegir archivo…"}</span>
-                      </label>
-                      <div className="text-xs text-gray-600 mt-1">
-                        {documents?.license?.url
-                          ? "Archivo cargado"
-                          : "Ningún archivo seleccionado"}
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex items-center gap-2">
-                      {documents?.license && (
-                        <button
-                          role="button"
-                          className="px-3 py-1.5 rounded border border-rose-300 text-rose-700 hover:bg-rose-50 cursor-pointer"
-                          onClick={async () => {
-                            setSavingDocs(true);
-                            try {
-                              await deleteProfessionalDoc("license");
-                              await refreshDocs();
-                              setDocsMsg("Matrícula eliminada.");
-                            } finally {
-                              setSavingDocs(false);
-                            }
-                          }}
-                          title="Eliminar matrícula"
-                        >
-                          Eliminar matrícula
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* DISPONIBILIDAD */}
-          {hasProfessional && (
-            <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
+                )}
+              </div>
+            )}
+            
+            {/* LINKEDIN (pro) */}
+            {hasProfessional && (
+              <div id="sec-linkedin" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
               <button
-                onClick={() => setOpenAvailability((o) => !o)}
+                onClick={() => setOpenLinkedin((o) => !o)}
                 className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
               >
-                <div>
-                  <h2 className="text-lg font-semibold">Disponibilidad</h2>
-                  <p className="text-sm text-gray-500">
-                    Agenda semanal y horarios
+                {/* IZQUIERDA */}
+                <div className="flex-1 min-w-0 text-left">
+                  <h2 className="text-lg font-semibold leading-tight">LinkedIn</h2>
+                  <p className="text-sm text-gray-500 leading-snug truncate">
+                    Agregá el enlace a tu perfil profesional
                   </p>
                 </div>
-                <Chevron open={openAvailability} />
+
+                {/* DERECHA */}
+                <div className="ml-3 flex items-center gap-3 shrink-0">
+                  {guardadoChip(dirtyLinkedin, savedAtLinkedin)}
+                  <Chevron open={openLinkedin} />
+                </div>
+              </button>
+  
+                {openLinkedin && (
+                  <div className="px-5 pb-5 space-y-4">
+                    {linkedinMsg && (
+                      <div
+                        className={`rounded-lg border px-3 py-2 text-sm ${
+                          linkedinMsgType === "success"
+                            ? "bg-green-50 border-green-200 text-green-700"
+                            : "bg-red-50 border-red-200 text-red-700"
+                        }`}
+                      >
+                        {linkedinMsg}
+                      </div>
+                    )}
+  
+                    <div>
+                      <label className="block text-sm font-medium mb-1">URL de LinkedIn</label>
+                      <input
+                        value={linkedinUrl}
+                        onChange={(e) => { setLinkedinUrl(e.target.value); setDirtyLinkedin(true); }}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="https://www.linkedin.com/in/tu-usuario"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Debe comenzar con <code>https://www.linkedin.com/</code>. Si dejás vacío, se quitará el ícono.
+                      </p>
+                    </div>
+  
+                    <div className="flex justify-end">
+                      <button
+                        onClick={onSaveLinkedin}
+                        disabled={savingLinkedin}
+                        className="px-4 py-2 rounded-lg bg-[#0a0e17] text-white hover:bg-black/80 disabled:opacity-60 cursor-pointer"
+                      >
+                        {savingLinkedin ? "Guardando…" : "Guardar LinkedIn"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+  
+              <div className="mt-8 flex flex-col items-end gap-1">
+              <button
+                onClick={() => navigate(hasProfessional ? "/dashboard/professional" : "/dashboard/user")}
+                disabled={!allowPanel}
+                aria-disabled={!allowPanel}
+                title={allowPanel ? "Abrir panel" : "Completá Nombre y Dirección para habilitar el panel"}
+                className={`px-5 py-2 rounded-lg ${
+                  allowPanel
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                    : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                }`}
+              >
+                Ir a mi panel
               </button>
 
-              {openAvailability && (
-                <div className="px-5 pb-5">
-                  <h2 className="sr-only">Disponibilidad</h2>
-                  {loadingAgenda ? (
-                    <p className="text-gray-600 mt-2">Cargando…</p>
-                  ) : (
-                    <>
-                      {agendaMsg && (
-                        <div className="mt-2 text-sm">{agendaMsg}</div>
-                      )}
-                      <div className="mt-3 space-y-3">
-                        {DAYS.map((d, idx) => {
-                          const inactive = !rows[idx].active;
-                          return (
-                            <div
-                              key={d.key}
-                              className={`flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-xl ${
-                                inactive
-                                  ? "bg-gray-50 border-gray-200"
-                                  : "bg-white border-gray-300"
-                              }`}
-                            >
-                              <div className="flex items-center gap-3 min-w-[180px]">
-                                <input
-                                  id={`day-${d.key}`}
-                                  type="checkbox"
-                                  checked={rows[idx].active}
-                                  onChange={(e) =>
-                                    setRows((a) =>
-                                      a.map((r, i) =>
-                                        i === idx
-                                          ? { ...r, active: e.target.checked }
-                                          : r
-                                      )
-                                    )
-                                  }
-                                  className="h-5 w-5 cursor-pointer"
-                                  aria-describedby={`day-help-${d.key}`}
-                                />
-                                <label
-                                  htmlFor={`day-${d.key}`}
-                                  className="cursor-pointer select-none"
-                                >
-                                  {d.label}
-                                </label>
-
-                                <span
-                                  className={`text-xs px-2 py-0.5 rounded-full ml-1 ${
-                                    inactive
-                                      ? "bg-gray-200 text-gray-600"
-                                      : "bg-emerald-100 text-emerald-700"
-                                  }`}
-                                >
-                                  {inactive ? "Inactivo" : "Activo"}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:ml-auto w-full sm:w-auto">
-                                {inactive ? (
-                                  <p
-                                    id={`day-help-${d.key}`}
-                                    className="text-xs text-gray-500 sm:mr-2"
-                                  >
-                                    🔒 Activa el día para editar los horarios.
-                                  </p>
-                                ) : null}
-
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-gray-600">De</span>
-                                  <input
-                                    type="time"
-                                    step="900"
-                                    value={rows[idx].from}
-                                    disabled={inactive}
-                                    onChange={(e) =>
-                                      setRows((a) =>
-                                        a.map((r, i) =>
-                                          i === idx
-                                            ? { ...r, from: e.target.value }
-                                            : r
-                                        )
-                                      )
-                                    }
-                                    title={
-                                      inactive
-                                        ? "Activa el día para editar"
-                                        : "Editar hora de inicio"
-                                    }
-                                    className={`border rounded-lg px-3 py-2 text-sm transition ${
-                                      inactive
-                                        ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
-                                        : "bg-white border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-300"
-                                    }`}
-                                  />
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-gray-600">a</span>
-                                  <input
-                                    type="time"
-                                    step="900"
-                                    value={rows[idx].to}
-                                    disabled={inactive}
-                                    onChange={(e) =>
-                                      setRows((a) =>
-                                        a.map((r, i) =>
-                                          i === idx
-                                            ? { ...r, to: e.target.value }
-                                            : r
-                                        )
-                                      )
-                                    }
-                                    title={
-                                      inactive
-                                        ? "Activa el día para editar"
-                                        : "Editar hora de fin"
-                                    }
-                                    className={`border rounded-lg px-3 py-2 text-sm transition ${
-                                      inactive
-                                        ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
-                                        : "bg-white border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-300"
-                                    }`}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="flex justify-end gap-3 mt-4">
-                        <button
-                          onClick={() =>
-                            setRows(
-                              DAYS.map((d) => ({
-                                key: d.key,
-                                active: false,
-                                from: "09:00",
-                                to: "18:00",
-                              }))
-                            )
-                          }
-                          className="px-4 py-2 rounded border cursor-pointer"
-                        >
-                          Restablecer
-                        </button>
-                        <button
-                          onClick={onSaveAgenda}
-                          disabled={savingAgenda}
-                          className="px-4 py-2 rounded bg-[#0a0e17] text-white cursor-pointer"
-                        >
-                          {savingAgenda ? "Guardando…" : "Guardar agenda"}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
+              {/* Hint cuando está deshabilitado */}
+              {!allowPanel && (
+                <p className="text-xs text-gray-500">
+                  Completá <b>Nombre</b> y <b>Dirección</b> para habilitar el panel.
+                </p>
               )}
             </div>
-          )}
-
-          <div className="mt-8 flex justify-end">
-            <button
-              onClick={() => navigate(hasProfessional ? "/dashboard/professional" : "/dashboard/user")}
-              disabled={!allowPanel}
-              title={allowPanel ? "Abrir panel" : "Completá Nombre y Dirección para habilitar el panel"}
-              className={`px-5 py-2 rounded-lg ${
-                allowPanel
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
-              }`}
-            >
-              Ir a mi panel
-            </button>
           </div>
+  
+          {/* Rail Quick Nav */}
+          <aside className="hidden lg:block sticky top-24 h-fit">
+            <div className="rounded-2xl border bg-white p-3">
+              <div className="px-2 py-1 text-xs font-medium text-gray-600">Secciones</div>
+              <nav className="mt-1 space-y-1">
+                {sections.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => scrollToId(s.id)}
+                    className="w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left hover:bg-gray-50"
+                    title={s.savedAt ? `Último guardado: ${new Date(s.savedAt).toLocaleString()}` : undefined}
+                  >
+                    <span className="text-sm">{s.title}</span>
+                    <span className="inline-flex items-center gap-2">
+                      {s.dirty ? (
+                        <span className="h-2 w-2 rounded-full bg-amber-500" title="Cambios sin guardar" />
+                      ) : s.done ? (
+                        <span className="h-2 w-2 rounded-full bg-emerald-600" title="Completo" />
+                      ) : (
+                        <span className="h-2 w-2 rounded-full bg-gray-300" title="Pendiente" />
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </aside>
         </div>
       </section>
     </>
   );
-}
+  }
+  

@@ -168,7 +168,10 @@ function ProfessionalDashboard() {
   // Próximas reservas
   const [nextBookings, setNextBookings] = useState([]);
   const [loadingNext, setLoadingNext] = useState(true);
-  const RECENT_LIMIT_PRO = 3;
+  const PAGE_SIZE_NEXT = 4;
+  const [pageNext, setPageNext] = useState(1);
+  const [totalNext, setTotalNext] = useState(0);
+  // const RECENT_LIMIT_PRO = 3;
 
   const fetchNextBookings = async () => {
     setLoadingNext(true);
@@ -176,24 +179,60 @@ function ProfessionalDashboard() {
       const list = await getBookingsForMe();
       const arr = Array.isArray(list) ? list : [];
       const now = Date.now();
+  
       const futureSorted = arr
-        .filter(b => new Date(b?.scheduledAt || b?.createdAt).getTime() >= now || b?.status === "pending")
-        .sort((a, b) => new Date(a?.scheduledAt || a?.createdAt) - new Date(b?.scheduledAt || b?.createdAt));
-      setNextBookings(futureSorted.slice(0, RECENT_LIMIT_PRO));
+              .filter((b) => {
+                const st = String(b?.status || "").toLowerCase();
+                // Mantener siempre visibles las pendientes y aceptadas,
+                // aunque NO tengan horario asignado todavía
+                if (st === "pending" || st === "accepted") return true;
+                const when = new Date(b?.scheduledAt || b?.createdAt).getTime();
+                return Number.isFinite(when) && when >= now;
+              })
+              .sort((a, b) => {
+                const sa = String(a?.status || "").toLowerCase();
+                const sb = String(b?.status || "").toLowerCase();
+                const aSched = a?.scheduledAt ? Date.parse(a.scheduledAt) : NaN;
+                const bSched = b?.scheduledAt ? Date.parse(b.scheduledAt) : NaN;
+      
+                // Prioridad de estado: pending (0) < accepted sin horario (1) < resto (2)
+                const prio = (x, hasSched) =>
+                  x === "pending" ? 0 : x === "accepted" && !hasSched ? 1 : 2;
+      
+                const pa = prio(sa, Number.isFinite(aSched));
+                const pb = prio(sb, Number.isFinite(bSched));
+                if (pa !== pb) return pa - pb;
+      
+                // Dentro de cada grupo, ordenar por próximo horario si existe,
+                // sino por creación ascendente (lo más próximo primero).
+                const aWhen = Number.isFinite(aSched)
+                  ? aSched
+                  : new Date(a?.createdAt || 0).getTime();
+                const bWhen = Number.isFinite(bSched)
+                  ? bSched
+                  : new Date(b?.createdAt || 0).getTime();
+                return aWhen - bWhen;
+              });
+
+      setTotalNext(futureSorted.length);
+  
+      const start = (pageNext - 1) * PAGE_SIZE_NEXT;
+      const paged = futureSorted.slice(start, start + PAGE_SIZE_NEXT);
+      setNextBookings(paged);
     } finally {
       setLoadingNext(false);
     }
-  };
+  };  
 
   useEffect(() => {
     let mounted = true;
     (async () => {
-      await refetchOnline();
+      // await refetchOnline();
       await fetchNextBookings();
       if (!mounted) return;
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [pageNext]);
 
   // 💬 Chats recientes (para el dock)
   const [recentChats, setRecentChats] = useState([]);
@@ -305,7 +344,98 @@ function ProfessionalDashboard() {
             </button>
           </div>
 
-          {loadingNext ? ( <p className="text-gray-600">Cargando…</p> ) : nextBookings.length === 0 ? ( <div className="border rounded-xl p-6 bg-white"> <p className="text-gray-600 mb-2">No tenés reservas próximas.</p> <p className="text-gray-500 text-sm">Cuando te lleguen, aparecerán acá.</p> </div> ) : ( <div className="grid md:grid-cols-2 gap-6"> {nextBookings.map((b) => { const clientName = b?.client?.name || b?.client?.email || "Cliente"; const serviceName = b?.service?.name || "Servicio"; const when = formatDateTime(b?.scheduledAt || b?.createdAt); return ( <div key={b._id} className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition" onClick={() => { const peerId = b?.client?._id || b?.client?.user?._id; if (peerId) navigate(`/chats/${peerId}`); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); const peerId = b?.client?._id || b?.client?.user?._id; if (peerId) navigate(`/chats/${peerId}`); } }} title="Abrir chat con el cliente" > <div className="flex items-start justify-between gap-3"> <div> <div className="font-semibold leading-5">{clientName}</div> <div className="text-sm text-gray-700">{serviceName}</div> <div className="text-sm text-gray-600">{when}</div> </div> <BookingStatusBadge status={b?.status} /> </div> {b?.note && ( <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3"> {b.note} </p> )} <div className="mt-3 flex justify-end gap-2"> <button onClick={() => navigate(`/chats/${b?.client?._id}`)} className="text-sm px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 cursor-pointer" > Chatear con cliente </button> <BookingActions booking={b} role="pro" onChanged={fetchNextBookings} /> </div> </div> ); })} </div> )} </div> </div>
+          {loadingNext ? (
+            <p className="text-gray-600">Cargando…</p>
+          ) : nextBookings.length === 0 ? (
+            <div className="border rounded-xl p-6 bg-white">
+              <p className="text-gray-600 mb-2">No tenés reservas próximas.</p>
+              <p className="text-gray-500 text-sm">Cuando te lleguen, aparecerán acá.</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid md:grid-cols-2 gap-6">
+                {nextBookings.map((b) => {
+                  const clientName = b?.client?.name || b?.client?.email || "Cliente";
+                  const serviceName = b?.service?.name || "Servicio";
+                  const when = formatDateTime(b?.scheduledAt || b?.createdAt);
+
+                  return (
+                    <div
+                      key={b._id}
+                      className="border rounded-xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition"
+                      onClick={() => {
+                        const peerId = b?.client?._id || b?.client?.user?._id;
+                        if (peerId) navigate(`/chats/${peerId}`);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          const peerId = b?.client?._id || b?.client?.user?._id;
+                          if (peerId) navigate(`/chats/${peerId}`);
+                        }
+                      }}
+                      title="Abrir chat con el cliente"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold leading-5">{clientName}</div>
+                          <div className="text-sm text-gray-700">{serviceName}</div>
+                          <div className="text-sm text-gray-600">{when}</div>
+                        </div>
+                        <BookingStatusBadge status={b?.status} />
+                      </div>
+
+                      {b?.note && (
+                        <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
+                          {b.note}
+                        </p>
+                      )}
+
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button
+                          onClick={() => navigate(`/chats/${b?.client?._id}`)}
+                          className="text-sm px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 cursor-pointer"
+                        >
+                          Chatear con cliente
+                        </button>
+                        <BookingActions booking={b} role="pro" onChanged={fetchNextBookings} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Pager */}
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-sm text-gray-600">
+                  Mostrando {Math.min((pageNext - 1) * PAGE_SIZE_NEXT + 1, totalNext)}–
+                  {Math.min(pageNext * PAGE_SIZE_NEXT, totalNext)} de {totalNext}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPageNext((p) => Math.max(1, p - 1))}
+                    disabled={pageNext === 1}
+                    className="px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                  >
+                    ◀ Anterior
+                  </button>
+                  <button
+                    onClick={() =>
+                      setPageNext((p) => (p * PAGE_SIZE_NEXT >= totalNext ? p : p + 1))
+                    }
+                    disabled={pageNext * PAGE_SIZE_NEXT >= totalNext}
+                    className="px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                  >
+                    Siguiente ▶
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Dock de chat IG/FB */}
       <ChatDock

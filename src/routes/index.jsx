@@ -20,6 +20,9 @@ import VerifyEmailSent from "../pages/VerifyEmailSent";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import ResetPasswordPage from "../pages/ResetPasswordPage";
 import CheckoutReturnPage from "../pages/CheckoutReturnPage";
+import PointsPage from "../pages/PointsPage";
+import RewardsCatalogPage from "../pages/RewardsCatalogPage";
+import RedemptionDetailPage from "../pages/RedemptionDetailPage";
 // 🆕
 import GoogleCallbackPage from "../pages/GoogleCallbackPage";
 // 🆕 Liquidaciones admin
@@ -44,16 +47,15 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Públicas */}
+      {/* Públicas con Navbar */}
       <Route element={<MainLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        {/* 🆕 Callback OAuth (pública) */}
         <Route path="/oauth/google/callback" element={<GoogleCallbackPage />} />
       </Route>
 
-      {/* Protegidas */}
+      {/* Protegidas con Navbar */}
       <Route element={<MainLayout />}>
         <Route
           path="/dashboard/admin"
@@ -63,7 +65,6 @@ function AppRoutes() {
             </PrivateRoute>
           }
         />
-        {/* 🆕 ruta de Liquidaciones */}
         <Route
           path="/dashboard/admin/settlements"
           element={
@@ -72,7 +73,6 @@ function AppRoutes() {
             </PrivateRoute>
           }
         />
-
         <Route
           path="/dashboard/user"
           element={
@@ -98,73 +98,91 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/dashboard/professional/services"
+          element={
+            <PrivateRoute allowedRoles={["professional"]}>
+              <ProfessionalServicesPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
           path="/professional/:id"
           element={
-            <PrivateRoute allowedRoles={["user", "professional"]}>
+            <PrivateRoute allowedRoles={["user","professional"]}>
               <ProfessionalDetailPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/bookings"
+          element={
+            <PrivateRoute allowedRoles={["user","professional"]}>
+              <BookingsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <PrivateRoute allowedRoles={["user","professional","admin"]}>
+              <ProfilePage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/messages"
+          element={
+            <PrivateRoute allowedRoles={["user","professional","admin"]}>
+              <ChatsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dashboard/professional/messages"
+          element={
+            <PrivateRoute allowedRoles={["user","professional","admin"]}>
+              <ChatsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/chats/:otherUserId?"
+          element={
+            <PrivateRoute allowedRoles={["user","professional","admin"]}>
+              <ChatsPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Puntos / Recompensas / Canjes */}
+        <Route
+          path="/points"
+          element={
+            <PrivateRoute allowedRoles={["user","professional","admin"]}>
+              <PointsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/rewards"
+          element={
+            <PrivateRoute allowedRoles={["user","professional","admin"]}>
+              <RewardsCatalogPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/redemptions/:id"
+          element={
+            <PrivateRoute allowedRoles={["user","professional","admin"]}>
+              <RedemptionDetailPage />
             </PrivateRoute>
           }
         />
       </Route>
 
-      {/* Alias /catalog -> dashboard del user */}
+      {/* Otras sin Navbar (si querés que NO lo muestren, dejalas afuera) */}
       <Route path="/catalog" element={<Navigate to="/dashboard/user" replace />} />
-
-      {/* Ruta de reservas (user y pro) */}
-      <Route
-        path="/bookings"
-        element={
-          <PrivateRoute allowedRoles={["user", "professional"]}>
-            <BookingsPage />
-          </PrivateRoute>
-        }
-      />
-
-      <Route
-        path="/dashboard/professional/services"
-        element={
-          <PrivateRoute allowedRoles={["professional"]}>
-            <ProfessionalServicesPage />
-          </PrivateRoute>
-        }
-      />
-
-      {/* Perfil */}
-      <Route
-        path="/profile"
-        element={
-          <PrivateRoute allowedRoles={["user", "professional", "admin"]}>
-            <ProfilePage />
-          </PrivateRoute>
-        }
-      />
-
-      <Route
-        path="/messages"
-        element={
-          <PrivateRoute allowedRoles={["user","professional","admin"]}>
-            <ChatsPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/dashboard/professional/messages"
-        element={
-          <PrivateRoute allowedRoles={["professional","admin","user"]}>
-            <ChatsPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/chats/:otherUserId?"
-        element={
-          <PrivateRoute allowedRoles={["user","professional","admin"]}>
-            <ChatsPage />
-          </PrivateRoute>
-        }
-      />
-
-      {/* Verificación de correo */}
       <Route path="/verify-email-sent" element={<VerifyEmailSent />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
