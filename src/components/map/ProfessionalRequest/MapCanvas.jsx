@@ -37,12 +37,8 @@ export default function MapCanvas({
       center: [center.lng, center.lat],
       zoom,
       cooperativeGestures: true,
-      // 👉 dejamos la atribución siempre compacta (solo “i”)
       attributionControl: false,
     });
-
-    // barra compacta con “i”
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
     map.dragPan.enable();
     map.touchZoomRotate.enable();
@@ -75,8 +71,8 @@ export default function MapCanvas({
           <path
             d="M12 2C8.134 2 5 5.134 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.866-3.134-7-7-7zm0 10
                a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"
-            fill="#ef4444"            /* cuerpo rojo */
-            stroke="#ffffff"          /* borde blanco pedido */
+            fill="#ef4444"
+            stroke="#ffffff"
             stroke-width="1"
           />
         </svg>
@@ -108,7 +104,7 @@ export default function MapCanvas({
         else if (p.y > h - EDGE) dy = STEP;
 
         if (dx || dy) {
-          map.panBy([dx, dy], { animate: false }); // pan suave, sin saltos
+          map.panBy([dx, dy], { animate: false });
           rafId.current = requestAnimationFrame(autoPanTick);
         } else {
           rafId.current = 0;
@@ -226,14 +222,30 @@ export default function MapCanvas({
         style={{ height: 420, overflow: "hidden" }}
       />
 
-      {/* Controles + y − pequeños y estéticos */}
-      <div className="pointer-events-none absolute top-2 right-2 flex flex-col gap-1.5">
+      {/* [ZOOM-FAT] Controles + / − grandes y táctiles.
+          - En mobile (default) abajo-derecha.
+          - En ≥ sm pasan a arriba-derecha. */}
+      <div
+        className="
+          pointer-events-none absolute right-2 bottom-2
+          sm:top-2 sm:bottom-auto
+          flex flex-col gap-2 z-[1]
+        "
+      >
         <button
           type="button"
           aria-label="Acercar"
           onClick={zoomIn}
-          className="pointer-events-auto w-9 h-9 md:w-8 md:h-8 rounded-lg bg-white/95 backdrop-blur border shadow hover:bg-white active:scale-95 text-base font-semibold"
           title="Acercar"
+          className="
+            pointer-events-auto
+            w-14 h-14 sm:w-12 sm:h-12
+            rounded-2xl bg-white/95 backdrop-blur border border-slate-300
+            shadow-md hover:bg-white active:scale-95
+            text-[28px] leading-none font-semibold
+            flex items-center justify-center
+            touch-manipulation
+          "
         >
           +
         </button>
@@ -241,8 +253,16 @@ export default function MapCanvas({
           type="button"
           aria-label="Alejar"
           onClick={zoomOut}
-          className="pointer-events-auto w-9 h-9 md:w-8 md:h-8 rounded-lg bg-white/95 backdrop-blur border shadow hover:bg-white active:scale-95 text-base font-semibold"
           title="Alejar"
+          className="
+            pointer-events-auto
+            w-14 h-14 sm:w-12 sm:h-12
+            rounded-2xl bg-white/95 backdrop-blur border border-slate-300
+            shadow-md hover:bg-white active:scale-95
+            text-[28px] leading-none font-semibold
+            flex items-center justify-center
+            touch-manipulation
+          "
         >
           −
         </button>

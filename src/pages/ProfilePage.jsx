@@ -316,9 +316,53 @@ function CountryDropdown({ open, anchorRef, valueISO, onSelect, onClose }) {
   );
 }
 
+// NEW: convierte "363 s" → "363 sur", "239 o" → "239 oeste", etc.
+function normalizeAddressLine(a = {}) {
+  const parts = [];
+  const numRaw = String(a.number || "").trim();
+  let number = numRaw;
+  let orient = "";
+
+  const m = numRaw.match(/^(\d+)\s*([nseow])$/i);
+  if (m) {
+    number = m[1];
+    const map = { n: "norte", s: "sur", e: "este", o: "oeste", w: "oeste" };
+    orient = map[m[2].toLowerCase()] || "";
+  }
+
+  if (a.street) parts.push(`${a.street} ${number || ""}`.trim());
+  if (orient) parts.push(orient);
+  if (a.city) parts.push(a.city);
+  if (a.state) parts.push(a.state);
+  if (a.postalCode) parts.push(a.postalCode);
+  if (a.country) parts.push(a.country);
+
+  return parts.filter(Boolean).join(", ");
+}
+
 /* ──────────────────────────────────────────────────────────
    Geocoding helpers (MEJORADOS): devuelven feature + addr
+   + inferencia de Código Postal cuando la API no lo trae.
+   [CHANGE #1] agregado inferPostalFromLabel() y usado como
+   fallback en geocode / reverseGeocodeFull / applyGeoResult.
 ────────────────────────────────────────────────────────── */
+
+/* [CHANGE #1] Fallback robusto para detectar CP desde la etiqueta */
+function inferPostalFromLabel(label = "") {
+  const s = String(label || "");
+  // CPA Argentino: letra + 4 dígitos + 3 letras (ej: J5402ABC)
+  const mCPA = s.match(/\b([A-Z]\d{4}[A-Z]{3})\b/i);
+  if (mCPA) return mCPA[1].toUpperCase();
+  // CP de 4 dígitos (AR) común
+  const m4 = s.match(/\b(\d{4})\b/);
+  if (m4) return m4[1];
+  // Fallback genérico 5 dígitos (otros países)
+  const m5 = s.match(/\b(\d{5})\b/);
+  if (m5) return m5[1];
+  // Nada
+  return "";
+}
+
 function extractAddrFromFeature(f) {
   const ctx = Array.isArray(f?.context) ? f.context : [];
   const by = (prefix) =>
@@ -333,7 +377,7 @@ function extractAddrFromFeature(f) {
     by("district")?.text ||
     f?.properties?.place ||
     "";
-  const postalCode =
+  let postalCode =
     by("postcode")?.text ||
     f?.properties?.postcode ||
     f?.properties?.postalcode ||
@@ -341,6 +385,11 @@ function extractAddrFromFeature(f) {
 
   const street = f?.text || f?.properties?.street || "";
   const number = String(f?.address || f?.properties?.housenumber || "").replace(/[()]/g, "").trim();
+
+  // [CHANGE #1] si no hay CP, lo inferimos del place_name
+  if (!postalCode) {
+    postalCode = inferPostalFromLabel(f?.place_name || f?.text || "");
+  }
 
   return {
     country,
@@ -352,11 +401,21 @@ function extractAddrFromFeature(f) {
   };
 }
 
-async function geocode(q) {
+// UPDATE: acepta opciones (limit, proximity, types, country) y no rompe si algo falta
+async function geocode(q, opts = {}) {
   if (!q?.trim()) return [];
-  const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(
-    q
-  )}.json?key=${MAP_KEY}&language=es`;
+  const params = new URLSearchParams({
+    key: MAP_KEY,
+    language: "es",
+    limit: String(opts.limit ?? 6),
+    // MapTiler (Mapbox-like) suele respetar estos:
+    types: opts.types ?? "address,street",
+    country: opts.country ?? "AR",
+  });
+  if (opts.proximity?.lng != null && opts.proximity?.lat != null) {
+    params.set("proximity", `${opts.proximity.lng},${opts.proximity.lat}`);
+  }
+  const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?${params}`;
   const res = await fetch(url);
   const data = await res.json();
   return (data?.features || []).map((f) => ({
@@ -378,9 +437,13 @@ async function reverseGeocodeFull(lat, lng) {
     const label = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
     return { label, addr: {}, feature: null };
   }
+  const addr = extractAddrFromFeature(f);
+  // [CHANGE #1] fallback CP por etiqueta si faltara
+  const label = f.place_name || f.text;
+  const withCP = { ...addr, postalCode: addr.postalCode || inferPostalFromLabel(label) };
   return {
-    label: f.place_name || f.text,
-    addr: extractAddrFromFeature(f),
+    label,
+    addr: withCP,
     feature: f,
   };
 }
@@ -745,20 +808,29 @@ export default function ProfilePage() {
     }, 300);
   }, [query, isFocused, allowSuggests]);
 
+  // UPDATE: merge no destructivo (si el geocoder no trae un campo, conservamos el actual)
   const applyGeoResult = useCallback(
     (res) => {
       if (!res) return;
       const { label: lbl, addr: a, feature } = res;
+
       setLabel(lbl || "");
       setQuery(lbl || "");
       setCoords({
         lat: feature?.center?.[1] ?? coords?.lat ?? null,
         lng: feature?.center?.[0] ?? coords?.lng ?? null,
       });
+
       setAddr((prev) => ({
         ...prev,
-        ...(a || {}),
+        country: a?.country || prev.country,
+        state: a?.state || prev.state,
+        city: a?.city || prev.city,
+        street: a?.street || prev.street,
+        number: a?.number || prev.number,
+        postalCode: a?.postalCode || prev.postalCode, // ← CP solo si vino
       }));
+
       setDirtyAddress(true);
     },
     [coords?.lat, coords?.lng]
@@ -799,13 +871,62 @@ export default function ProfilePage() {
     );
   };
 
+  // UPDATE: no mueve el mapa ni borra campos si no hay match fuerte; muestra sugerencias
   const geocodeFromFields = async () => {
-    const line = buildAddressLabel(addr);
+    // Línea “inteligente” con orientación
+    const line = normalizeAddressLine(addr);
     if (!line.trim()) return;
+
     try {
-      const list = await geocode(line);
-      if (list[0]) pickSuggestion(list[0]);
-    } catch {}
+      const list = await geocode(line, {
+        limit: 6,
+        country: "AR",
+        types: "address,street",
+        proximity: coords || undefined, // sesgo a lo que ya tenés
+      });
+
+      if (!list.length) {
+        // Búsqueda aproximada sin número para darte algo cercano
+        const approxQ = normalizeAddressLine({ ...addr, number: "" });
+        const approx = await geocode(approxQ, {
+          limit: 6,
+          country: "AR",
+          types: "address,street",
+          proximity: coords || undefined,
+        });
+
+        if (approx.length) {
+          setSuggests(approx);
+          setAllowSuggests(true);
+          setIsFocused(true);
+          setMsgType("error");
+          setMsg("No encontramos la dirección exacta. Elegí una sugerencia aproximada o corregí número/orientación.");
+        } else {
+          setMsgType("error");
+          setMsg("No encontramos nada con esos datos. Probá: Calle + Número + Ciudad.");
+        }
+        return;
+      }
+
+      // Usamos el más relevante; si es flojo, no aplicamos automáticamente
+      const best = list.find((x) => (x.feature?.relevance ?? 0) >= 0.8) || list[0];
+      if ((best.feature?.relevance ?? 0) < 0.8) {
+        setSuggests(list);
+        setAllowSuggests(true);
+        setIsFocused(true);
+        setMsgType("error");
+        setMsg("Resultado poco claro. Elegí una opción de la lista o ajustá los campos.");
+        return;
+      }
+
+      // Match confiable → aplicamos
+      setSuggests([]);
+      setAllowSuggests(false);
+      applyGeoResult(best);
+    } catch {
+      setMsgType("error");
+      setMsg("Hubo un problema buscando la dirección. Intentá nuevamente.");
+    }
   };
 
   const essentialsOk = useMemo(() => {
@@ -1547,8 +1668,7 @@ export default function ProfilePage() {
                               .map(w => w.charAt(0).toLocaleUpperCase("es-AR") + w.slice(1))
                               .join(" ")
                               .slice(0, 50)
-                          }))
-                        }
+                          }))}
                         maxLength={50}
                         className="w-full border rounded-lg px-4 py-2"
                         placeholder="Tu nombre completo"
@@ -2530,5 +2650,4 @@ export default function ProfilePage() {
       </section>
     </>
   );
-  }
-  
+}

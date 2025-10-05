@@ -106,6 +106,8 @@ const AvailablePill = ({ on = false, className = "" }) => (
    ========= */
 function LiveChip({ p, onClick, onDragClickGuard }) {
   const name = p?.user?.name || "Profesional";
+  theAvatar: {
+  }
   const avatar = p?.user?.avatarUrl ? absUrl(p.user.avatarUrl) : "";
   const firstService = (p?.services || []).map((s) => s?.name).filter(Boolean)[0] || "Servicio";
   const linkedIn = p?.linkedinUrl || p?.user?.linkedin || "";
@@ -133,10 +135,6 @@ function LiveChip({ p, onClick, onDragClickGuard }) {
 
 /* ====================================================
    Cinta “Disponibles ahora” — loop sin duplicados reales
-   - Auto-scroll suave
-   - Pausa en hover
-   - Drag con mouse (inercia simple opcional)
-   - Reaparece por la derecha incluso con 1 item
    ==================================================== */
 function LiveNowRibbon({ pros }) {
   const navigate = useNavigate();
@@ -213,7 +211,6 @@ function LiveNowRibbon({ pros }) {
           for (let i = 0; i < next.length; i++) {
             const w = widths[i] || 0;
             if (next[i] + w < 0) {
-              // mover al final: sumo totalLen + GAP
               next[i] += totalLen + GAP;
             }
           }
@@ -241,7 +238,6 @@ function LiveNowRibbon({ pros }) {
     if (!dragging) return;
     setPositions((prev) => {
       const next = prev.map((x) => x + dx);
-      // normalizar para que ningún valor explote: si alguno queda muy a la derecha, lo traigo a rango
       for (let i = 0; i < next.length; i++) {
         const w = widths[i] || 0;
         if (next[i] > totalLen) next[i] -= totalLen + GAP;
@@ -255,7 +251,7 @@ function LiveNowRibbon({ pros }) {
     (document).removeEventListener("pointermove", onPointerMove);
   };
 
-  const guardClick = () => dragData.current.moved > 6; // si arrastraste, cancelo click
+  const guardClick = () => dragData.current.moved > 6;
 
   if (items.length === 0) {
     return (
@@ -289,7 +285,6 @@ function LiveNowRibbon({ pros }) {
         className="relative h-[72px] cursor-grab active:cursor-grabbing"
         onPointerDown={onPointerDown}
       >
-        {/* Cada chip se posiciona absolutamente con su X calculada */}
         {items.map((p, i) => {
           const x = positions[i] ?? 0;
           return (
@@ -351,6 +346,23 @@ function UserDashboard() {
   const [onlinePros, setOnlinePros] = useState([]);
   const [loadingOnline, setLoadingOnline] = useState(true);
 
+  // [CHANGE] GPS-UX: procedencia, precisión y etiqueta humana del origen
+  const [originSource, setOriginSource] = useState(null); // 'gps' | 'profile' | 'search' | 'drag' | null
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);   // en metros
+  const [originLabel, setOriginLabel] = useState("");     // etiqueta legible del origen
+  const [hideGpsWarn, setHideGpsWarn] = useState(false);
+  const mapWrapRef = useRef(null);
+
+  // [CHANGE] highlight visual del mapa al pulsar “Ajustar en el mapa”
+  const [nudgeMap, setNudgeMap] = useState(false);
+  const nudgeAndFocusMap = () => {
+    try {
+      mapWrapRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setNudgeMap(true);
+      window.setTimeout(() => setNudgeMap(false), 1400);
+    } catch {}
+  };
+
   // Persistencia filtros
   useEffect(() => {
     try {
@@ -397,9 +409,12 @@ function UserDashboard() {
         if (loc?.lat != null && loc?.lng != null) {
           const c = { lat: loc.lat, lng: loc.lng };
           setOrigin(c);
-          setQuery(me?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+          const label = me?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
+          setOriginLabel(label);                  // [CHANGE]
+          setQuery(label);
           setAllowSuggests(false);
           setSuggests([]);
+          setOriginSource("profile"); setGpsAccuracy(null); setHideGpsWarn(false);
         }
       } catch {}
     })();
@@ -410,9 +425,12 @@ function UserDashboard() {
     if (loc?.lat != null && loc?.lng != null) {
       const c = { lat: loc.lat, lng: loc.lng };
       setOrigin(c);
-      setQuery(user?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+      const label = user?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
+      setOriginLabel(label);                      // [CHANGE]
+      setQuery(label);
       setAllowSuggests(false);
       setSuggests([]);
+      setOriginSource("profile"); setGpsAccuracy(null); setHideGpsWarn(false);
     }
   }, [user?.address?.location?.lat, user?.address?.location?.lng]);
 
@@ -426,9 +444,12 @@ function UserDashboard() {
         if (hasCoords) {
           const c = { lat: me.address.location.lat, lng: me.address.location.lng };
           setOrigin(c);
-          setQuery(me?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+          const label = me?.address?.label || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
+          setOriginLabel(label);                  // [CHANGE]
+          setQuery(label);
           setAllowSuggests(false);
           setSuggests([]);
+          setOriginSource("profile"); setGpsAccuracy(null); setHideGpsWarn(false);
           return;
         }
         const a = me?.address || {};
@@ -437,9 +458,11 @@ function UserDashboard() {
           const [hit] = await geocode(line);
           if (hit?.lat != null && hit?.lng != null) {
             setOrigin({ lat: hit.lat, lng: hit.lng });
+            setOriginLabel(hit.name || line);     // [CHANGE]
             setQuery(hit.name || line);
             setAllowSuggests(false);
             setSuggests([]);
+            setOriginSource("search"); setGpsAccuracy(null); setHideGpsWarn(false);
           }
         }
       } catch {}
@@ -477,9 +500,12 @@ function UserDashboard() {
     const loc = u?.address?.location;
     if (loc?.lat != null && loc?.lng != null) {
       setOrigin({ lat: loc.lat, lng: loc.lng });
-      setQuery(u?.address?.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`);
+      const label = u?.address?.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+      setOriginLabel(label);                      // [CHANGE]
+      setQuery(label);
       setAllowSuggests(false);
       setSuggests([]);
+      setOriginSource("profile"); setGpsAccuracy(null); setHideGpsWarn(false);
       return;
     }
     const a = u?.address || {};
@@ -491,9 +517,12 @@ function UserDashboard() {
       const [hit] = await geocode(line);
       if (hit?.lat != null && hit?.lng != null) {
         setOrigin({ lat: hit.lat, lng: hit.lng });
-        setQuery(hit.name || line);
+        const label = hit.name || line;
+        setOriginLabel(label);                    // [CHANGE]
+        setQuery(label);
         setAllowSuggests(false);
         setSuggests([]);
+        setOriginSource("search"); setGpsAccuracy(null); setHideGpsWarn(false);
       } else {
         alert("No pudimos ubicar tu dirección. Revisá los datos o usá GPS.");
       }
@@ -502,15 +531,27 @@ function UserDashboard() {
     }
   };
 
+  // [CHANGE] Usar GPS con precisión + reverse geocode para etiqueta humana
   const useGPS = () => {
     if (!navigator.geolocation) return alert("GPS no disponible en este navegador.");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setOrigin(c);
-        setQuery(`${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+        setQuery(`${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`); // se reemplaza luego si hay dirección
         setAllowSuggests(false);
         setSuggests([]);
+        setOriginSource("gps");
+        setGpsAccuracy(Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null);
+        setHideGpsWarn(false);
+        // reverse geocode para mostrar dirección legible
+        reverseGeocode(c.lat, c.lng).then((nice) => {
+          const label = nice || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
+          setOriginLabel(label);
+          setQuery(label);
+        }).catch(() => {
+          setOriginLabel(`${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+        });
       },
       () => alert("No pudimos obtener tu ubicación.")
     );
@@ -683,7 +724,16 @@ function UserDashboard() {
   useEffect(() => {
     if (!liveOrigin || !navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
-      (pos) => setOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => {
+        const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setOrigin(c);
+        setOriginSource("gps"); setGpsAccuracy(Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null); setHideGpsWarn(false);
+        // actualizar etiqueta humana suavemente
+        reverseGeocode(c.lat, c.lng).then((nice) => {
+          setOriginLabel(nice || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+          setQuery(nice || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+        }).catch(() => {});
+      },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 8000 }
     );
@@ -706,13 +756,16 @@ function UserDashboard() {
     );
   };
 
+  // [CHANGE] UI helpers
+  const showGpsWarning = originSource === "gps" && !hideGpsWarn && (!Number.isFinite(gpsAccuracy) || gpsAccuracy > 150);
+
   return (
-    <section className="min-h-screen bg-white text-[#0a0e17] pt-24 pb-20 px-4">
-      <div className="max-w-6xl mx-auto">
+    <section className="min-h-screen bg-white text-[#0a0e17] pt-24 pb-20 px-4 overflow-x-hidden">
+      <div className="max-w-6xl mx-auto overflow-x-hidden">
         {/* Solicitar servicio + mapa */}
         <div className="grid lg:grid-cols-[420px_minmax(0,1fr)] gap-4 mb-8">
-          <div className="bg-white border rounded-2xl shadow-sm p-4 h-fit">
-            <h2 className="text-xl font-semibold mb-3">Solicitá un servicio</h2>
+          <div className="bg-white border rounded-2xl shadow-sm p-4 h-fit w-full max-w-[calc(100vw-2rem)] sm:max-w-full mx-auto">
+            <h2 className="text-3xl font-bold mb-3">Solicitá un servicio</h2>
 
             <div className="mb-3">
               <label className="block text-xs text-gray-500 mb-1">Ingresá una ubicación</label>
@@ -739,9 +792,12 @@ function UserDashboard() {
                       className="w-full text-left px-3 py-2 hover:bg-gray-50"
                       onMouseDown={() => {
                         setOrigin({ lat: s.lat, lng: s.lng });
-                        setQuery(s.name);
+                        const label = s.name;
+                        setOriginLabel(label);            // [CHANGE]
+                        setQuery(label);
                         setAllowSuggests(false);
                         setSuggests([]);
+                        setOriginSource("search"); setGpsAccuracy(null); setHideGpsWarn(false);
                       }}
                     >
                       {s.name}
@@ -760,6 +816,7 @@ function UserDashboard() {
                   Usar GPS
                 </button>
               </div>
+              <p className="text-[12px] text-gray-500">El GPS del navegador es rápido pero puede ser menos preciso.</p>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={liveOrigin} onChange={(e) => setLiveOrigin(e.target.checked)} />
                 <span className="text-sm">Seguir mi ubicación (en vivo)</span>
@@ -813,16 +870,83 @@ function UserDashboard() {
               </div>
             </div>
 
+            {/* [CHANGE] Origen con dirección legible + chip precisión */}
             <div className="text-sm text-gray-600">
               {origin?.lat != null ? (
-                <>Origen: <b>{origin.lat.toFixed(5)}, {origin.lng.toFixed(5)}</b></>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="shrink-0">Origen:</span>
+                  <b
+                    className="truncate flex-1 min-w-0"
+                    title={originLabel || `${origin.lat.toFixed(5)}, ${origin.lng.toFixed(5)}`}
+                  >
+                    {originLabel || `${origin.lat.toFixed(5)}, ${origin.lng.toFixed(5)}`}
+                  </b>
+
+                  {originSource === "gps" && (
+                    <span
+                      className={`flex-none inline-flex items-center gap-1 px-2 py-[2px] rounded-full border text-[11px] ${
+                        !Number.isFinite(gpsAccuracy) || gpsAccuracy > 150
+                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                          : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      }`}
+                      title="Precisión reportada por el GPS del navegador"
+                    >
+                      GPS ±{Number.isFinite(gpsAccuracy) ? Math.round(gpsAccuracy) : "?"} m
+                    </span>
+                  )}
+                </div>
               ) : (
                 <>Elegí una ubicación para ver profesionales cercanos.</>
               )}
             </div>
+
+            {/* [CHANGE] Banner de advertencia con highlight del mapa */}
+            {showGpsWarning && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm">
+                    El GPS del navegador puede ser impreciso
+                    {Number.isFinite(gpsAccuracy) ? ` (±${Math.round(gpsAccuracy)} m)` : ""}, especialmente en PC.
+                    <b> Arrastrá el pin</b> hasta el punto exacto o <b>usá tu dirección de perfil</b>.
+                  </p>
+                  <button
+                    className="text-amber-700 hover:text-amber-900 text-sm"
+                    onClick={() => setHideGpsWarn(true)}
+                    aria-label="Cerrar aviso"
+                    title="Cerrar aviso"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={nudgeAndFocusMap}
+                    className="px-3 py-1.5 rounded-md border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 cursor-pointer"
+                  >
+                    Ajustar en el mapa
+                  </button>
+                  <button
+                    onClick={useProfileAddress}
+                    className="px-3 py-1.5 rounded-md bg-amber-600 text-white hover:bg-amber-700 cursor-pointer"
+                  >
+                    Usar mi perfil
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="min-w-0">
+            {/* wrapper con highlight transitorio al pulsar “Ajustar en el mapa” */}
+            <div
+              ref={mapWrapRef}
+              className={
+                "map-ctrl-fat min-w-0 w-full max-w-[calc(100vw-2rem)] sm:max-w-full overflow-hidden rounded-lg sm:rounded-xl transition-shadow " +
+                (nudgeMap
+                  ? "sm:ring-4 sm:ring-amber-300 sm:ring-offset-2 sm:ring-offset-white sm:shadow-[0_0_0_6px_rgba(251,191,36,0.25)]"
+                  : "")
+              }
+            >
+
             <MapCanvas
               center={origin || { lat: -34.6037, lng: -58.3816 }}
               markers={mapMarkers}
@@ -831,14 +955,20 @@ function UserDashboard() {
               onOriginDrag={() => {}}
               onOriginDragEnd={async ({ lat, lng }) => {
                 setOrigin({ lat, lng });
+                setOriginSource("drag"); setGpsAccuracy(null); setHideGpsWarn(false);
                 try {
                   const nice = await reverseGeocode(lat, lng);
                   if (nice) {
+                    setOriginLabel(nice);          // [CHANGE]
                     setQuery(nice);
                     setAllowSuggests(false);
                     setSuggests([]);
+                  } else {
+                    setOriginLabel(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
                   }
-                } catch {}
+                } catch {
+                  setOriginLabel(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+                }
               }}
             />
           </div>
@@ -1004,13 +1134,13 @@ function UserDashboard() {
             <p className="text-gray-600">Cargando…</p>
           ) : recent.length === 0 ? (
             <div className="border rounded-2xl p-6 bg-white">
-              <p className="text-gray-600 mb-3">Aún no tenés reservas.</p>
-              <button
+              <p className="text-gray-600">Aún no tenés reservas.</p>
+              {/* <button
                 onClick={() => navigate("/dashboard/user")}
                 className="text-sm px-3 py-1.5 rounded bg-amber-500 text-white hover:bg-amber-600"
               >
                 Buscar profesionales
-              </button>
+              </button> */}
             </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-6">
@@ -1043,7 +1173,7 @@ function UserDashboard() {
                           {photo ? <img src={photo} alt="avatar" className="h-full w-full object-cover" /> : initial}
                         </div>
                         <div>
-                        <div className="font-semibold leading-5 truncate max-w-[240px]">{name}</div>
+                          <div className="font-semibold leading-5 truncate max-w-[240px]">{name}</div>
                           <div className="text-sm text-gray-700">{b?.service?.name || "Servicio"}</div>
                           <div className="text-sm text-gray-600">{formatDateTime(b?.scheduledAt)}</div>
                         </div>
