@@ -109,9 +109,8 @@ export async function resetPasswordByToken(token, newPassword) {
 }
 
 export const uploadMyAvatar = async (formData) => {
-  const { data } = await axiosUser.patch(`${API}/users/me/avatar`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  // importante: NO pongas headers de Content-Type manualmente
+  const { data } = await axiosUser.patch(`/users/me/avatar`, formData);
   return data; // { url, user }
 };
 

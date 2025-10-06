@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { LuMapPin, LuClock, LuShieldCheck } from "react-icons/lu";
+// 🟢 CAMBIO: necesitamos location para leer state.focusSection cuando venimos redirigidos desde otra página
+import { useLocation } from "react-router-dom";
 
 /* ======== contenido ======== */
 const steps = [
@@ -24,6 +26,8 @@ const steps = [
 function HowItWorksSection() {
   const sectionRef = useRef(null);
   const overlayRef = useRef(null);
+  // 🟢 CAMBIO:
+  const location = useLocation();
 
   useEffect(() => {
     const sectionEl = sectionRef.current;
@@ -105,13 +109,24 @@ function HowItWorksSection() {
     handleHash();
     window.addEventListener("hashchange", handleHash);
 
+    // 🟢 CAMBIO: si venimos desde otra página con state.focusSection, scrollear + glow
+    if (location?.state && location.state.focusSection === "aspectos-clave") {
+      setTimeout(() => {
+        smoothToSection();
+        // sincronizamos el hash para que quede compartible
+        history.replaceState(null, "", "#aspectos-clave");
+      }, 80);
+    }
+
     return () => {
       document.removeEventListener("click", clickDelegate);
       window.removeEventListener("hashchange", handleHash);
       unbindCancel();
       clearTimeout(timer);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.state]); // 🟢 CAMBIO: dependemos del state por si se reutiliza el componente
+  // (el resto queda igual)
 
   return (
     <section

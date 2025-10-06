@@ -1,14 +1,36 @@
-// src/components/layout/Footer.jsx
 import React, { useState } from "react";
 import { FaInstagram, FaTwitter, FaLinkedin, FaChevronDown, FaFacebook } from "react-icons/fa";
 import { useAuth } from "../../auth/AuthContext";
+// 🟢 CAMBIO: importamos navigate y location para redirigir al home con state y hacer scroll + glow
+import { useNavigate, useLocation } from "react-router-dom";
 
 function Footer() {
   const [expanded, setExpanded] = useState(null);
   const { user } = useAuth();
+  // 🟢 CAMBIO:
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const waHref = `https://wa.me/${import.meta.env.VITE_SUPPORT_WA}?text=${encodeURIComponent("Hola! Quiero atención personalizada desde CuyIT")}`;
 
+  // 🟢 CAMBIO: manejador para "Aspectos Clave" desde cualquier página
+  const handleAspectosClick = (e) => {
+    e.preventDefault();
+    // si ya estamos en Home, hacemos scroll suave y actualizamos el hash
+    if (location.pathname === "/") {
+      const target = document.querySelector("#aspectos-clave, #como-funciona");
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        history.pushState(null, "", "#aspectos-clave");
+      } else {
+        // por si el DOM todavía no montó (edge), forzamos hash; HowItWorksSection lo capta
+        window.location.hash = "#aspectos-clave";
+      }
+    } else {
+      // si NO estamos en Home, redirigimos con state para que en Home haga scroll + glow
+      navigate("/", { state: { focusSection: "aspectos-clave" } });
+    }
+  };
 
   return (
     <footer className="bg-gradient-to-t from-black to-[#111827] text-gray-300">
@@ -46,7 +68,11 @@ function Footer() {
                   </a>
                 </li>
                 <li>
-                  <a href="#como-funciona" className="block py-1.5 text-sm hover:text-white">
+                  <a
+                    href="#como-funciona"
+                    onClick={handleAspectosClick} // 🟢 CAMBIO
+                    className="block py-1.5 text-sm hover:text-white"
+                  >
                     Aspectos Clave
                   </a>
                 </li>
@@ -134,7 +160,11 @@ function Footer() {
                   </a>
                 </li>
                 <li>
-                  <a href="#como-funciona" className="hover:text-white">
+                  <a
+                    href="#como-funciona"
+                    onClick={handleAspectosClick} // 🟢 CAMBIO
+                    className="hover:text-white"
+                  >
                     Aspectos clave
                   </a>
                 </li>

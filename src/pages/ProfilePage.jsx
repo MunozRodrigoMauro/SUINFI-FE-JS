@@ -953,33 +953,33 @@ export default function ProfilePage() {
     let newAvatarUrl = form.avatarUrl || "";
     let updatedAtFromUpload = null;
 
+    // dentro de saveCommon(), reemplaza el bloque de upload de avatar:
     if (avatarFile) {
       try {
         const fd = new FormData();
-        fd.append("file", avatarFile);
+        fd.append("file", avatarFile); // el backend espera el campo "file"
         const r = await uploadMyAvatar(fd);
+
         const uploaded = r?.url || r?.user?.avatarUrl || "";
         if (uploaded) {
           newAvatarUrl = uploaded;
           setAvatarPreview(absUrl(uploaded));
+
           const nextUpdatedAt =
             r?.user?.updatedAt || new Date().toISOString();
+
           updatedAtFromUpload = nextUpdatedAt;
-          setUser((prev) => ({
-            ...prev,
-            avatarUrl: uploaded,
-            updatedAt: nextUpdatedAt,
-          }));
+          setUser(prev => ({ ...prev, avatarUrl: uploaded, updatedAt: nextUpdatedAt }));
           bumpAvatarVersion();
         }
       } catch (e) {
-        console.error("upload avatar error", e);
+        console.error("upload avatar error", e?.response?.data || e);
         setMsgType("error");
         setMsg("No se pudo subir la foto. Probá nuevamente.");
         return;
       }
     }
-
+    
     let e164 = "";
     const localDigits = onlyDigits(waNumber);
 
@@ -1115,7 +1115,7 @@ export default function ProfilePage() {
       if (waOk) pushToast("✅ Cambios guardados en “WhatsApp”.");
     }
   };
-
+    
   const invalids = useMemo(() => {
     const bad = [];
     rows.forEach((r) => {
