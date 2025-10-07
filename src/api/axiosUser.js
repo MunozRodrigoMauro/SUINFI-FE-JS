@@ -2,29 +2,22 @@
 import axios from "axios";
 
 function computeBaseURL() {
-  // 1) Si viene del env, lo normalizamos y usamos
   const raw = import.meta.env?.VITE_API_URL || "";
   if (raw) {
     const trimmed = raw.replace(/\/+$/, "");
     return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
   }
-
-  // 2) Fallback seguro en prod: si el sitio corre en *.cuyit.com,
-  // pegamos al API público
   if (typeof window !== "undefined") {
     const host = window.location.hostname || "";
-    if (host.endsWith("cuyit.com")) {
-      return "https://api.cuyit.com/api";
-    }
+    if (host.endsWith("cuyit.com")) return "https://api.cuyit.com/api";
   }
-
-  // 3) Último recurso: dev local
   return "http://localhost:3000/api";
 }
 
 const axiosUser = axios.create({
   baseURL: computeBaseURL(),
-  headers: { "Content-Type": "application/json" },
+  // 👇 NO fijamos Content-Type por defecto; dejamos sólo Accept
+  headers: { Accept: "application/json" },
   withCredentials: true,
 });
 
@@ -39,6 +32,16 @@ function getToken() {
 
 axiosUser.interceptors.request.use((config) => {
   try {
+    // ⛔️ Si es FormData: no tocar Content-Type ni transformar el body
+    if (config.data instanceof FormData) {
+      if (config.headers) {
+        delete config.headers["Content-Type"];
+        delete config.headers["content-type"];
+      }
+      // asegurar que no haya transformRequest que serialice
+      config.transformRequest = [(d) => d];
+    }
+
     const full = `${config.baseURL || ""}${config.url || ""}`;
     const isVerifyEmail = /\/auth\/verify-email\//i.test(full);
     if (!isVerifyEmail) {

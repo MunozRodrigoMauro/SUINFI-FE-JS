@@ -109,10 +109,10 @@ export async function resetPasswordByToken(token, newPassword) {
 }
 
 export const uploadMyAvatar = async (formData) => {
-  // importante: NO pongas headers de Content-Type manualmente
   const { data } = await axiosUser.patch(`/users/me/avatar`, formData);
-  return data; // { url, user }
+  return data;
 };
+
 
 export const deleteMyAvatar = async () => {
   const { data } = await axiosUser.delete(`${API}/users/me/avatar`);

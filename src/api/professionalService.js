@@ -62,11 +62,10 @@ export const setAvailabilityMode = async (mode) => {
 };
 
 export const uploadProfessionalDoc = async (type, formData) => {
-  const { data } = await axiosUser.post(`${API}/professionals/me/docs/${type}`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const { data } = await axiosUser.post(`/professionals/me/docs/${type}`, formData);
   return data;
 };
+
 
 export const deleteProfessionalDoc = async (type) => {
   const { data } = await axiosUser.delete(`${API}/professionals/me/docs/${type}`);
