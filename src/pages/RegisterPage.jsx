@@ -108,7 +108,14 @@ function RegisterPage() {
       });
     } catch (err) {
       const raw = err?.response?.data?.errors;
-      if (Array.isArray(raw) && raw.length) {
+      const code = err?.response?.data?.code;
+      const status = err?.response?.status;
+    
+      // 🛠️ CAMBIO: manejo especial si el email ya existe (409 o EMAIL_TAKEN)
+      if (status === 409 || code === "EMAIL_TAKEN") {
+        setFieldErrors({ email: "Ese correo ya está registrado. Iniciá sesión o recuperá tu contraseña." });
+        setError([]);
+      } else if (Array.isArray(raw) && raw.length) {
         const perField = {};
         const general = [];
         raw.forEach((e) => {
@@ -135,7 +142,8 @@ function RegisterPage() {
           "No pudimos completar el registro: revisá nombre, email y contraseña.",
         ]);
       }
-    } finally {
+    }
+     finally {
       setLoading(false);
     }
   };

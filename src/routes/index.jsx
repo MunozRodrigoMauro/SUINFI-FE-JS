@@ -29,7 +29,7 @@ import GoogleCallbackPage from "../pages/GoogleCallbackPage";
 import SettlementsPage from "../pages/admin/SettlementsPage";
 // 🟢 Nuevo Scroll automático
 import ScrollToTop from "../components/common/ScrollToTop";
-
+import TermsPage from "../pages/TermsPage";
 
 function AppRoutes() {
   const { loading } = useAuth();
@@ -59,6 +59,7 @@ function AppRoutes() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/oauth/google/callback" element={<GoogleCallbackPage />} />
+          <Route path="/terms" element={<TermsPage />} />
         </Route>
 
         {/* Protegidas con Navbar */}

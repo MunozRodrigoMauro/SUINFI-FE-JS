@@ -9,12 +9,12 @@ const steps = [
   {
     icon: <LuMapPin className="w-12 h-12" />,
     title: "Geolocalización inteligente",
-    desc: "Encontrá al profesional más cercano según dónde esté en este momento. Como pedir un auto, pero con expertos.",
+    desc: "Encontrá al profesional más cercano según dónde esté en este momento. Como pedir un UBER, pero con profesionales de cualquier área.",
   },
   {
     icon: <LuClock className="w-12 h-12" />,
     title: "Disponibilidad en tiempo real",
-    desc: "Ves quién está libre AHORA mismo. Reservá y recibí ayuda al instante, sin esperar turnos.",
+    desc: "Ves quién está libre ahora mismo. Hace la reserva inmediata y recibí ayuda al instante, sin esperar turnos.",
   },
   {
     icon: <LuShieldCheck className="w-12 h-12" />,

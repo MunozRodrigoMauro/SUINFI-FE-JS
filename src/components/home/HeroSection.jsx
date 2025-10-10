@@ -6,7 +6,7 @@ import { useAuth } from "../../auth/AuthContext";
 function HeroSection() {
   const { user } = useAuth();
 
-  // 🔀 Según si está logueado o no
+  // 🔀 Según si está logueado o no (SIN CAMBIAR LÓGICA)
   const isLoggedIn = !!user;
   let ctaText = "¡Comenzá gratis!";
   let ctaLink = "/register";
@@ -25,53 +25,83 @@ function HeroSection() {
   }
 
   return (
-    <section className="relative min-h-[40vh] md:min-h-[48vh] overflow-hidden">
-      {/* Fondo */}
+    <section
+      className="
+        relative overflow-hidden supports-[overflow:clip]:overflow-clip
+        /* 🛠 Cambio: más espacio en móvil (arriba y abajo) */
+        pt-[calc(env(safe-area-inset-top)+92px)] md:pt-0
+        pb-8 md:pb-0
+        /* Desktop/Tablet: mantenemos min-height para el look grande */
+        md:min-h-[50vh] lg:min-h-[56vh]
+      "
+    >
+      {/* Fondo base */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e17] to-[#0a0e17]" />
 
+      {/* Video con compatibilidad */}
       <video
         className="absolute inset-0 w-full h-full object-cover motion-safe:block motion-reduce:hidden"
         autoPlay
         loop
         muted
         playsInline
-        poster="/videos/VIDEOSUINFI.webm"
+        preload="metadata"
+        aria-hidden="true"
+        poster="/videos/VIDEOSUINFI.jpg"
       >
         <source src="/videos/VIDEOSUINFI.webm" type="video/webm" />
+        <source src="/videos/VIDEOSUINFI.mp4" type="video/mp4" />
       </video>
 
-      <div className="absolute inset-0 bg-black/70" />
+      {/* Oscurecimiento para legibilidad */}
+      <div className="absolute inset-0 bg-black/70 md:bg-black/70" />
 
       {/* Contenido */}
-      <div className="relative z-10 flex flex-col min-h-[42vh] md:min-h-[50vh] text-white px-4">
-        {/* Título */}
-        <div className="pt-20 md:pt-26 flex items-center justify-center">
+      <div className="relative z-10 text-white px-4">
+        <div
+          className="
+            mx-auto w-full max-w-screen-xl
+            /* En móvil: contenido define el alto; en md+ centramos vertical */
+            flex flex-col items-center justify-start md:justify-center
+            gap-5 md:gap-6 /* 🛠 Cambio: un poco más de separación interna */
+            md:min-h-[50vh] lg:min-h-[56vh]
+          "
+        >
+          {/* Título */}
           <h1
             className="
-              text-3xl md:text-6xl font-extrabold
-              leading-[1.05] tracking-[-0.03em]
-              text-center max-w-2xl md:max-w-3xl
+              font-extrabold text-center
+              leading-[1.12] tracking-[-0.02em]
+              max-w-2xl md:max-w-3xl lg:max-w-4xl
+              text-[clamp(1.55rem,6vw,2.3rem)]
+              md:text-[clamp(2.25rem,4.2vw,3.75rem)]
             "
           >
             Conectá con profesionales en tiempo real
           </h1>
-        </div>
 
-        {/* Espacio extra entre texto y botón */}
-        <div className="mt-6 md:mt-20 flex items-center justify-center">
-          <Link
-            to={ctaLink}
-            className="btn-breathe bg-gradient-to-r from-emerald-600 to-teal-700 
-              text-white font-bold px-7 py-4
-              rounded-full shadow-lg hover:scale-110 hover:shadow-xl 
-              transition transform text-xl md:text-2xl"
-          >
-            {ctaText}
-          </Link>
+          {/* CTA */}
+          <div className="mt-4 md:mt-6 lg:mt-8 flex items-center justify-center">
+            <Link
+              to={ctaLink}
+              className="
+                btn-breathe
+                bg-gradient-to-r from-emerald-600 to-teal-700
+                text-white font-bold
+                px-6 py-3 md:px-7 md:py-4
+                rounded-full shadow-lg hover:scale-110 hover:shadow-xl
+                transition-transform duration-300
+                text-base md:text-xl lg:text-2xl
+                focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70
+              "
+            >
+              {ctaText}
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Animación suave del botón (breathe) */}
+      {/* Animación del botón */}
       <style>{`
         @keyframes breathe {
           0%, 100% {

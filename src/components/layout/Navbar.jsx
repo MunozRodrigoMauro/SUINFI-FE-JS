@@ -162,6 +162,9 @@ function Navbar() {
     : "";
   const initial = (user?.name?.[0] || user?.email?.[0] || "U").toUpperCase();
 
+  // 🔵 CAMBIO: URL de WhatsApp centralizada para el menú Ayuda
+  const waHref = `https://wa.me/${import.meta.env.VITE_SUPPORT_WA}?text=${encodeURIComponent("Hola! Quiero atención personalizada desde CuyIT")}`;
+
   return (
     <nav
       className={`fixed top-0 w-full z-50 transition-all duration-500 ${
@@ -173,7 +176,7 @@ function Navbar() {
       <div className="max-w-7xl mx-auto px-4 py-2 flex justify-between items-center h-14 md:h-16">
         {/* Logo */}
         <Link to="/" className="flex items-center" color="white">
-        <img src={logo} alt="CuyIT logo" className="h-7 md:h-7 object-contain" />
+          <img src={logo} alt="CuyIT logo" className="h-7 md:h-7 object-contain" />
         </Link>
 
         <div className="flex items-center gap-3 text-sm font-medium text-gray-300">
@@ -191,18 +194,22 @@ function Navbar() {
                   </svg>
                 </summary>
                 <div className="absolute right-0 mt-2 w-72 bg-white text-black border rounded-xl shadow-xl overflow-hidden z-50">
+                  {/* Chat con soporte: WhatsApp (se mantiene) */}
                   <button
-                    onClick={() => {/* abrir chat de soporte */}}
+                    onClick={() => window.open(waHref, "_blank", "noopener,noreferrer")}
                     className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                   >
                     Chat con soporte
                   </button>
+
+                  {/* 🔵 CAMBIO: ahora navega a /terms (ya no WhatsApp) */}
                   <button
-                    onClick={() => window.open("https://tus-requisitos-ejemplo", "_blank")}
+                    onClick={() => navigate("/terms")}
                     className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                   >
-                    Requisitos para socios de la app
+                    Términos y condiciones
                   </button>
+
                   <button
                     onClick={() => { logout(); navigate("/login"); }}
                     className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
@@ -306,7 +313,7 @@ function Navbar() {
                         {/* Pro: Disponible ahora */}
                         {user?.role === "professional" && (
                           <div className="px-4 py-2 border-t">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-centered justify-between">
                               <div className="flex items-center gap-2">
                                 <span className={`inline-block h-2.5 w-2.5 rounded-full ${isAvailableNow ? "bg-emerald-500" : "bg-gray-400"}`} />
                                 <span className="text-sm font-medium">Disponible ahora</span>
