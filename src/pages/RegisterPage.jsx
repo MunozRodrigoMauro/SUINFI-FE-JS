@@ -44,6 +44,7 @@ function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showRegPwd, setShowRegPwd] = useState(false); // 👁 toggle de contraseña en registro
   const [error, setError] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -238,23 +239,50 @@ function RegisterPage() {
         </div>
 
         <div>
+        {/* Campo contraseña con “ojito” */}
+        <div className="relative">
           <input
-            type="password"
+            type={showRegPwd ? "text" : "password"}
             placeholder="Contraseña"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full border px-4 py-2 rounded disabled:opacity-60"
+            className="w-full border px-4 py-2 rounded disabled:opacity-60 pr-10"
             disabled={loading}
+            autoComplete="new-password"
           />
-          <p
-            className={`text-xs mt-1 ${
-              fieldErrors.password ? "text-red-600" : "text-gray-500"
-            }`}
+          <button
+            type="button"
+            onClick={() => setShowRegPwd((v) => !v)}
+            aria-label={showRegPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
+            className="absolute inset-y-0 right-2 my-auto h-8 w-8 grid place-items-center rounded hover:bg-gray-100"
+            title={showRegPwd ? "Ocultar" : "Mostrar"}
           >
-            {fieldErrors.password || DEFAULT_HELPERS.password}
-          </p>
+            {showRegPwd ? (
+              // eye-off
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 3l18 18" />
+                <path d="M10.58 10.58A2 2 0 1013.42 13.4" />
+                <path d="M9.88 4.24A9.77 9.77 0 0112 4c5.52 0 9 5.5 9 8- .19.46-.43.9-.71 1.31M6.11 6.11C4.21 7.39 3 9.19 3 12c0 .74.21 1.53.57 2.3A13.3 13.3 0 0012 20a12.1 12.1 0 005.27-1.2" />
+              </svg>
+            ) : (
+              // eye
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            )}
+          </button>
         </div>
+
+        <p
+          className={`text-xs mt-1 ${
+            fieldErrors.password ? "text-red-600" : "text-gray-500"
+          }`}
+        >
+          {fieldErrors.password || DEFAULT_HELPERS.password}
+        </p>
+      </div>
 
         {/* 🛠 CAMBIO: submit deshabilitado si no hay rol */}
         <button
