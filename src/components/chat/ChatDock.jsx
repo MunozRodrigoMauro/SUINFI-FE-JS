@@ -1,3 +1,4 @@
+// src/components/chat/ChatDock.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   LuX,
@@ -9,7 +10,9 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { socket } from "../../lib/socket";
 import { getOrCreateWith, sendText } from "../../api/chatService";
-import { getAvailableNowProfessionals } from "../../api/professionalService"; // ⬅️ NUEVO
+import { getAvailableNowProfessionals } from "../../api/professionalService";
+// [ADD] SFX WebAudio
+import SFX from "../../lib/sfx";
 
 /**
  * props:
@@ -17,7 +20,6 @@ import { getAvailableNowProfessionals } from "../../api/professionalService"; //
  * - onOpenChat: (peerId) => void
  */
 
-// 🔗 Absolutizar rutas /uploads para que se vean las fotos
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
 const absUrl = (u) =>
@@ -29,13 +31,11 @@ export default function ChatDock({ chats = [], onOpenChat }) {
 
   const [openList, setOpenList] = useState(false);
   const [windows, setWindows] = useState([]);            // [{peerId, name, avatar}]
-  const [locallyRead, setLocallyRead] = useState(() => new Set()); // peerIds marcados como leídos al abrir
-  const [overrides, setOverrides] = useState({});        // { [peerId]: { text, createdAt, from } }
+  const [locallyRead, setLocallyRead] = useState(() => new Set());
+  const [overrides, setOverrides] = useState({});
 
-  // 🔴🟢 Disponibilidad de profesionales (Set de userIds)
   const [availableSet, setAvailableSet] = useState(() => new Set());
 
-  // Estado inicial de disponibilidad + resync on connect
   useEffect(() => {
     let mounted = true;
     const seed = async () => {
@@ -71,7 +71,6 @@ export default function ChatDock({ chats = [], onOpenChat }) {
     };
   }, []);
 
-  // fusiona chats + overrides de último mensaje y reordena por fecha
   const merged = useMemo(() => {
     const base = Array.isArray(chats) ? chats.slice() : [];
     const out = base.map((c) => {
@@ -96,7 +95,6 @@ export default function ChatDock({ chats = [], onOpenChat }) {
     return out;
   }, [chats, overrides]);
 
-  // “No leído” SOLO si el último es del otro y sin readAt (y no lo abriste ya)
   const isUnread = (c) => {
     if (!c) return false;
     const peerId = c?.otherUser?._id;
@@ -118,7 +116,6 @@ export default function ChatDock({ chats = [], onOpenChat }) {
       const next = exists ? prev : [...prev, { peerId, name, avatar }];
       return next.slice(-3);
     });
-    // al abrir, lo marcamos como leído localmente (no afecta al backend)
     setLocallyRead((prev) => {
       const n = new Set(prev);
       n.add(String(peerId));
@@ -129,7 +126,6 @@ export default function ChatDock({ chats = [], onOpenChat }) {
   const closeWindow = (peerId) =>
     setWindows((prev) => prev.filter((w) => w.peerId !== peerId));
 
-  // 👉 Si no hay chats, NO mostrar dock
   if (!merged.length) return null;
 
   return (
@@ -137,7 +133,6 @@ export default function ChatDock({ chats = [], onOpenChat }) {
       {/* Lista flotante */}
       <div className="fixed right-4 bottom-4 z-40">
         <div className="w-80 max-h-[60vh] rounded-2xl shadow-xl border bg-white/95 backdrop-blur overflow-hidden">
-          {/* Header clickeable */}
           <button
             type="button"
             onClick={() => setOpenList((o) => !o)}
@@ -214,7 +209,6 @@ export default function ChatDock({ chats = [], onOpenChat }) {
                       </div>
                     </div>
 
-                    {/* Puntito tipo IG si está no leído */}
                     {unread && (
                       <span className="ml-2 h-2.5 w-2.5 rounded-full bg-sky-500 shrink-0" aria-hidden="true" />
                     )}
@@ -226,7 +220,6 @@ export default function ChatDock({ chats = [], onOpenChat }) {
         </div>
       </div>
 
-
       {/* Ventanas flotantes (desktop) */}
       <div className="hidden md:flex fixed right-4 bottom-24 z-40 gap-3">
         {windows.map((w) => (
@@ -234,14 +227,14 @@ export default function ChatDock({ chats = [], onOpenChat }) {
             key={w.peerId}
             peerId={w.peerId}
             name={w.name}
-            avatarUrl={w.avatar}                          // ⬅️ NUEVO
+            avatarUrl={w.avatar}
             isAvailable={availableSet.has(String(w.peerId))}
             onClose={() => closeWindow(w.peerId)}
-            onOpen={() => onOpenChat?.(w.peerId)} // abre ChatsPage solo al presionar "Abrir"
+            onOpen={() => onOpenChat?.(w.peerId)}
             onLocalLastMessage={(payload) =>
               setOverrides((prev) => ({
                 ...prev,
-                [w.peerId]: payload, // { text, createdAt, from }
+                [w.peerId]: payload,
               }))
             }
           />
@@ -255,7 +248,7 @@ export default function ChatDock({ chats = [], onOpenChat }) {
             <ChatWindow
               peerId={windows[0].peerId}
               name={windows[0].name}
-              avatarUrl={windows[0].avatar}              // ⬅️ NUEVO
+              avatarUrl={windows[0].avatar}
               isAvailable={availableSet.has(String(windows[0].peerId))}
               onClose={() => closeWindow(windows[0].peerId)}
               onOpen={() => onOpenChat?.(windows[0].peerId)}
@@ -274,7 +267,16 @@ export default function ChatDock({ chats = [], onOpenChat }) {
   );
 }
 
-function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose, onOpen, isMobile = false, onLocalLastMessage }) {
+function ChatWindow({
+  peerId,
+  name,
+  isAvailable,
+  avatarUrl: avatarProp,
+  onClose,
+  onOpen,
+  isMobile = false,
+  onLocalLastMessage,
+}) {
   const { user } = useAuth();
   const me = user?.id || user?._id;
 
@@ -282,13 +284,11 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState(avatarProp || "");  // ⬅️ NUEVO
+  const [avatarUrl, setAvatarUrl] = useState(avatarProp || "");
   const listRef = useRef(null);
 
-  // Para evitar duplicados
   const seenIdsRef = useRef(new Set());
 
-  // Cargar (o crear) el chat y su historial al abrir la ventana
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -298,7 +298,6 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
         const cid = data?.chat?._id || null;
         setChatId(cid);
 
-        // Si no recibimos avatar al abrir la ventana, lo tomamos del BE
         if (!avatarProp && data?.otherUser?.avatarUrl) {
           setAvatarUrl(data.otherUser.avatarUrl);
         }
@@ -316,14 +315,11 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
         seenIdsRef.current = seen;
         setMessages(dedup);
 
-        // Join rooms de socket
         if (socket && cid) {
           if (me) socket.emit("joinUser", String(me));
           socket.emit("joinRoom", `chat:${cid}`);
         }
-      } catch (e) {
-        // silencioso
-      }
+      } catch {}
     })();
     return () => {
       mounted = false;
@@ -334,7 +330,6 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerId]);
 
-  // Escuchar mensajes entrantes
   useEffect(() => {
     if (!socket || !chatId) return;
 
@@ -346,7 +341,12 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
       if (id && !seenIdsRef.current.has(id)) {
         seenIdsRef.current.add(id);
         setMessages((prev) => [...prev, msg]);
-        // si el que llega es del otro, no tocamos overrides (badge correcto)
+
+        // [CHANGE] sonido recibido si es del otro
+        const fromId = msg?.from?._id || msg?.from;
+        if (String(fromId) !== String(me)) {
+          SFX.playRecv();
+        }
       }
     };
 
@@ -354,9 +354,8 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
     return () => {
       socket.off("chat:message", onNewMsg);
     };
-  }, [chatId]);
+  }, [chatId, me]);
 
-  // Auto-scroll
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -369,7 +368,6 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
 
     setSending(true);
 
-    // Optimista
     const tempId = `tmp:${Date.now()}`;
     const optimistic = {
       _id: tempId,
@@ -385,7 +383,6 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
 
     try {
       const real = await sendText(chatId, t);
-      // Reemplazar temp por real y deduplicar
       setMessages((prev) => {
         const replaced = prev.map((m) => (m._id === tempId ? real || m : m));
         const seen = new Set();
@@ -401,17 +398,17 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
         return out;
       });
 
-      // ⚡️ Actualizar el listado del dock inmediatamente
       onLocalLastMessage?.({
         text: real?.text ?? t,
         createdAt: real?.createdAt ?? new Date().toISOString(),
         from: me,
       });
 
-      // Aviso opcional (el BE igual lo rebota)
       socket?.emit?.("message:send", { chatId, message: real });
+
+      // [CHANGE] sonido enviar en éxito
+      SFX.playSend();
     } catch {
-      // marcar error en el temp
       setMessages((prev) =>
         prev.map((m) => (m._id === tempId ? { ...m, error: true } : m))
       );
@@ -429,7 +426,6 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
     <div
       className={`w-[320px] ${isMobile ? "w-full h-[70vh]" : "h-96"} rounded-2xl border bg-white shadow-xl overflow-hidden`}
     >
-      {/* Topbar de ventanita */}
       <div className="px-3 py-2 bg-slate-800 text-white flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <div className="relative h-7 w-7 rounded-full bg-white/20 grid place-items-center overflow-hidden">
@@ -465,7 +461,6 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
         </div>
       </div>
 
-      {/* Timeline con separador cada 4 mensajes */}
       <div
         ref={listRef}
         className={`px-3 ${isMobile ? "h-[calc(70vh-110px)]" : "h-[calc(384px-110px)]"} overflow-y-auto bg-gray-50`}
@@ -508,7 +503,6 @@ function ChatWindow({ peerId, name, isAvailable, avatarUrl: avatarProp, onClose,
         )}
       </div>
 
-      {/* Composer */}
       <form
         className="p-2 flex items-center gap-2 border-t bg-white"
         onSubmit={(e) => {

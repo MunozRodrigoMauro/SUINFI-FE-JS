@@ -1,4 +1,5 @@
 // src/pages/ChatsPage.jsx
+// [CHANGE] Sonidos ahora con WebAudio (SFX). Sin <audio> ni mp3. Layout mobile sólo aquí.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   useParams,
@@ -18,7 +19,9 @@ import {
 } from "react-icons/lu";
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
-import { getAvailableNowProfessionals } from "../api/professionalService"; // ⬅️ NUEVO
+import { getAvailableNowProfessionals } from "../api/professionalService";
+// [ADD] SFX WebAudio (reemplaza a mp3)
+import SFX from "../lib/sfx";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const ASSET_BASE = API.replace(/\/api\/?$/, "");
@@ -48,10 +51,10 @@ export default function ChatsPage() {
   const [loadingList, setLoadingList] = useState(true);
   const [q, setQ] = useState("");
 
-  // 🟢 Set con los profesionales disponibles (para dots)
-  const [availableSet, setAvailableSet] = useState(() => new Set()); // ⬅️ NUEVO
+  // Disponibilidad (dots)
+  const [availableSet, setAvailableSet] = useState(() => new Set());
 
-  const seedAvailability = async () => { // ⬅️ NUEVO
+  const seedAvailability = async () => {
     try {
       const list = await getAvailableNowProfessionals();
       const ids = new Set((list || []).map((p) => String(p?.user?._id || p?.user)));
@@ -59,10 +62,7 @@ export default function ChatsPage() {
     } catch {}
   };
 
-  // Inicial + sockets para disponibilidad (igual que en Navbar) ⬅️ NUEVO
   useEffect(() => {
-    let mounted = true;
-
     const init = async () => {
       await seedAvailability();
     };
@@ -84,7 +84,6 @@ export default function ChatsPage() {
     socket?.on?.("connect", onConnect);
 
     return () => {
-      mounted = false;
       socket?.off?.("availability:update", onAvailability);
       socket?.off?.("availability:changed", onAvailability);
       socket?.off?.("connect", onConnect);
@@ -132,6 +131,9 @@ export default function ChatsPage() {
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
 
+  // [KEEP] helper local para mobile
+  const isMobile = () => window.innerWidth < 768;
+
   // Autoredirige al primer chat si no hay :id en la URL
   useEffect(() => {
     if (otherUserId) return;
@@ -167,11 +169,27 @@ export default function ChatsPage() {
     };
   }, [otherUserId]);
 
-  // Scroll al final
-  useEffect(() => {
+  // Scroll al final (sólo en esta vista)
+  const scrollToBottom = (smooth = true) => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (!el) return;
+    const behavior = smooth ? "smooth" : "auto";
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    });
+  };
+  useEffect(() => {
+    if (!loadingChat) scrollToBottom(true);
   }, [messages.length, loadingChat]);
+
+  // Forzar scroll al cambiar viewport (teclado móvil)
+  useEffect(() => {
+    const onResize = () => {
+      if (isMobile()) scrollToBottom(false);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Join de usuario a su room personal
   useEffect(() => {
@@ -188,13 +206,21 @@ export default function ChatsPage() {
 
     const onNewMsg = (payload) => {
       if (payload?.chatId !== String(chat._id)) return;
+      const msg = payload?.message;
       setMessages((prev) => {
-        const already = prev.some(
-          (m) => String(m._id) === String(payload.message?._id)
-        );
-        return already ? prev : [...prev, payload.message];
+        const already = prev.some((m) => String(m._id) === String(msg?._id));
+        return already ? prev : [...prev, msg];
       });
       fetchChats();
+
+      // [CHANGE] sonido recibido con SFX (solo si es del otro)
+      const fromId = msg?.from?._id || msg?.from;
+      const myId = user?.id || user?._id;
+      if (String(fromId) !== String(myId)) {
+        SFX.playRecv();
+      }
+
+      scrollToBottom(true);
     };
 
     socket.on("chat:message", onNewMsg);
@@ -203,7 +229,7 @@ export default function ChatsPage() {
       socket.off("chat:message", onNewMsg);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat?._id]);
+  }, [chat?._id, user?.id, user?._id]);
 
   const sendMessage = async (e) => {
     e?.preventDefault?.();
@@ -224,6 +250,7 @@ export default function ChatsPage() {
     setMessages((prev) => [...prev, optimistic]);
     inputRef.current.value = "";
     setSending(true);
+    scrollToBottom(true);
 
     try {
       const { data } = await axiosUser.post(
@@ -239,6 +266,9 @@ export default function ChatsPage() {
         return exists ? noTemp : [...noTemp, real];
       });
 
+      // [CHANGE] sonido envío en éxito
+      SFX.playSend();
+
       fetchChats();
     } catch {
       setMessages((prev) =>
@@ -246,14 +276,14 @@ export default function ChatsPage() {
       );
     } finally {
       setSending(false);
+      scrollToBottom(true);
     }
   };
 
   const you = user?.id || user?._id;
 
-  // ===== FIX: nombre + avatar del header con fallback a la lista =====
-  const counterpartName =
-    counterpart?.name || counterpart?.email || "Chat";
+  // ===== nombre + avatar del header con fallback a la lista =====
+  const counterpartName = counterpart?.name || counterpart?.email || "Chat";
 
   const counterpartAvatar = useMemo(() => {
     if (counterpart?.avatarUrl) return absUrl(counterpart.avatarUrl);
@@ -263,7 +293,6 @@ export default function ChatsPage() {
     return fromList ? absUrl(fromList) : "";
   }, [counterpart?.avatarUrl, chats, otherUserId]);
 
-  // 🟢 Estado de disponibilidad del counterpart (header) ⬅️ NUEVO
   const counterpartAvailable = useMemo(
     () => availableSet.has(String(otherUserId || counterpart?._id || "")),
     [availableSet, otherUserId, counterpart?._id]
@@ -272,13 +301,13 @@ export default function ChatsPage() {
   return (
     <>
       <Navbar />
-
       <BackBar
         title="💬 Mensajes"
         subtitle="Conversá con tus contactos en tiempo real."
       />
 
-      <section className="min-h-screen bg-white text-[#0a0e17] pt-30 pb-6">
+      {/* Layout SOLO aquí: 100dvh en mobile + flex para scroll correcto */}
+      <section className="bg-white text-[#0a0e17] md:min-h-screen min-h-[100dvh] pt-24 pb-2">
         <div className="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)] gap-4 px-4">
           {/* Sidebar */}
           <aside className="rounded-2xl border bg-white shadow-sm overflow-hidden">
@@ -305,7 +334,7 @@ export default function ChatsPage() {
                   const name = u.name || u.email || "Usuario";
                   const isActive = String(u._id) === String(otherUserId);
                   const avatar = u.avatarUrl ? absUrl(u.avatarUrl) : "";
-                  const isAvail = availableSet.has(String(u._id || "")); // ⬅️ NUEVO
+                  const isAvail = availableSet.has(String(u._id || ""));
                   return (
                     <button
                       key={c._id}
@@ -313,9 +342,10 @@ export default function ChatsPage() {
                       aria-current={isActive ? "page" : undefined}
                       title={name}
                       className={`group w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg cursor-pointer transition
-                        ${isActive
-                          ? "bg-slate-50 ring-1 ring-slate-200"
-                          : "hover:bg-gray-50 hover:shadow-sm hover:ring-1 hover:ring-slate-200"
+                        ${
+                          isActive
+                            ? "bg-slate-50 ring-1 ring-slate-200"
+                            : "hover:bg-gray-50 hover:shadow-sm hover:ring-1 hover:ring-slate-200"
                         }
                         focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 active:bg-gray-100`}
                     >
@@ -331,7 +361,6 @@ export default function ChatsPage() {
                             {(name[0] || "U").toUpperCase()}
                           </span>
                         )}
-                        {/* Dot de disponibilidad (igual Navbar) */}
                         <span
                           className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
                             isAvail ? "bg-emerald-500" : "bg-gray-400"
@@ -343,7 +372,10 @@ export default function ChatsPage() {
                         <div className="font-medium leading-5 truncate group-hover:text-black">
                           {name}
                         </div>
-                        <div className="text-xs text-gray-500 truncate" title={c?.lastMessage?.text || ""}>
+                        <div
+                          className="text-xs text-gray-500 truncate"
+                          title={c?.lastMessage?.text || ""}
+                        >
                           {c?.lastMessage?.text || "—"}
                         </div>
                       </div>
@@ -354,9 +386,9 @@ export default function ChatsPage() {
             </div>
           </aside>
 
-
           {/* Conversación */}
-          <main className="rounded-2xl border bg-white shadow-sm overflow-hidden min-h-[70vh]">
+          {/* flex-col + flex-1 en lista; sin vh fijos */}
+          <main className="rounded-2xl border bg-white shadow-sm overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 bg-[#111827] text-white">
               <div className="flex items-center gap-3 min-w-0">
                 <button
@@ -377,7 +409,6 @@ export default function ChatsPage() {
                       {(counterpartName?.[0] || "U").toUpperCase()}
                     </span>
                   )}
-                  {/* Dot de disponibilidad del counterpart (igual Navbar) */}
                   <span
                     className={`absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
                       counterpartAvailable ? "bg-emerald-500" : "bg-gray-400"
@@ -385,26 +416,19 @@ export default function ChatsPage() {
                     title={counterpartAvailable ? "Disponible" : "No disponible"}
                   />
                 </div>
-                <div className="truncate font-semibold">
-                  {counterpartName}
-                </div>
+                <div className="truncate font-semibold">{counterpartName}</div>
               </div>
-              {/* <Link
-                to={`/profile/${counterpart?._id || ""}`}
-                className="hidden md:inline-block text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20"
-              >
-                Ver perfil
-              </Link> */}
             </div>
 
+            {/* Lista */}
             <div
               ref={scrollRef}
-              className="h-[60vh] md:h-[70vh] overflow-y-auto p-4 bg-gray-50"
+              className="flex-1 overflow-y-auto p-4 bg-gray-50"
+              style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
             >
               {loadingChat ? (
                 <div className="flex items-center justify-center h-full text-gray-600 gap-2">
-                  <LuLoaderCircle className="h-4 w-4 animate-spin" /> Cargando
-                  chat…
+                  <LuLoaderCircle className="h-4 w-4 animate-spin" /> Cargando chat…
                 </div>
               ) : error ? (
                 <div className="text-center text-rose-600">{error}</div>
@@ -446,15 +470,18 @@ export default function ChatsPage() {
               )}
             </div>
 
+            {/* Composer */}
             <form
               onSubmit={sendMessage}
               className="flex items-center gap-2 p-3 border-t bg-white"
+              style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
             >
               <input
                 ref={inputRef}
                 className="flex-1 border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
                 placeholder="Escribí un mensaje…"
                 disabled={!chat?._id}
+                onFocus={() => isMobile() && scrollToBottom(false)}
               />
               <button
                 type="submit"

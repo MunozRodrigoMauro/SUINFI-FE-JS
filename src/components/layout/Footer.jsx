@@ -32,6 +32,18 @@ function Footer() {
     }
   };
 
+  // 🟢 CAMBIO: manejador para "Inicio" desde cualquier página
+const handleInicioClick = (e) => {
+  e.preventDefault();
+  if (location.pathname === "/") {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    history.pushState(null, "", "/");
+  } else {
+    navigate("/", { replace: false });
+  }
+};
+
+
   return (
     <footer className="bg-gradient-to-t from-black to-[#111827] text-gray-300">
       {/* Versión Mobile (solo se aplica en pantallas < md) */}
@@ -63,13 +75,17 @@ function Footer() {
             >
               <ul className="pl-2 space-y-2 py-2">
                 <li>
-                  <a href="#" className="block py-1.5 text-sm hover:text-white">
+                  <a
+                    href="#inicio"
+                    onClick={handleInicioClick} // 🟢 CAMBIO
+                    className="block py-1.5 text-sm hover:text-white"
+                  >
                     Inicio
                   </a>
                 </li>
                 <li>
                   <a
-                    href="#como-funciona"
+                    href="#aspectos-clave"
                     onClick={handleAspectosClick} // 🟢 CAMBIO
                     className="block py-1.5 text-sm hover:text-white"
                   >
@@ -160,7 +176,11 @@ function Footer() {
               <h4 className="text-white font-semibold mb-4">Enlaces</h4>
               <ul className="space-y-2">
                 <li>
-                  <a href="#" className="hover:text-white">
+                  <a
+                    href="#inicio"
+                    onClick={handleInicioClick} // 🟢 CAMBIO
+                    className="hover:text-white"
+                  >
                     Inicio
                   </a>
                 </li>

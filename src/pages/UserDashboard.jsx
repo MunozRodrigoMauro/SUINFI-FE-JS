@@ -903,7 +903,7 @@ function UserDashboard() {
             {/* [CHANGE] Banner de advertencia con highlight del mapa */}
             {showGpsWarning && (
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 p-3">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <p className="text-sm">
                     El GPS del navegador puede ser impreciso
                     {Number.isFinite(gpsAccuracy) ? ` (±${Math.round(gpsAccuracy)} m)` : ""}, especialmente en PC.
@@ -948,7 +948,7 @@ function UserDashboard() {
             >
 
             <MapCanvas
-              center={origin || { lat: -34.6037, lng: -58.3816 }}
+              center={origin || { lat: -31.5375, lng: -68.5257 }}
               markers={mapMarkers}
               radiusKm={origin ? radiusKm : null}
               draggableOrigin
@@ -1119,8 +1119,8 @@ function UserDashboard() {
         )}
 
         {/* 📋 Reservas recientes */}
-        <div className="text-left mb-16">
-          <div className="flex items-center justify-between mb-4">
+        <div className="text-left mb-16 w-full max-w-full px-2 sm:px-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h2 className="text-2xl font-bold">📋 Reservas recientes</h2>
             <button
               onClick={() => navigate("/bookings")}
@@ -1143,7 +1143,7 @@ function UserDashboard() {
               </button> */}
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
               {recent.map((b) => {
                 const name = b?.professional?.user?.name || b?.professional?.user?.email || "Profesional";
                 const photo = b?.professional?.user?.avatarUrl ? absUrl(b.professional.user.avatarUrl) : "";
@@ -1168,7 +1168,7 @@ function UserDashboard() {
                     title="Abrir chat con el profesional"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
                         <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-200 grid place-items-center font-semibold">
                           {photo ? <img src={photo} alt="avatar" className="h-full w-full object-cover" /> : initial}
                         </div>
@@ -1178,10 +1178,13 @@ function UserDashboard() {
                           <div className="text-sm text-gray-600">{formatDateTime(b?.scheduledAt)}</div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2" onClick={(e) => { e.stopPropagation(); }}>
-                        <BookingStatusBadge status={b?.status} />
-                        <BookingActions booking={b} role="client" onChanged={fetchRecent} />
-                      </div>
+                        <div
+                          className="flex flex-col items-end gap-2"
+                          onClick={(e) => { e.stopPropagation(); }}
+                        >
+                          <BookingStatusBadge status={b?.status} />
+                          <BookingActions booking={b} role="client" onChanged={fetchRecent} />
+                        </div>
                     </div>
                     {b?.note && (
                       <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
