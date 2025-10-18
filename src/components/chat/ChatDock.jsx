@@ -1,11 +1,12 @@
 // src/components/chat/ChatDock.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react"; // [EMOJI] +lazy,Suspense
 import {
   LuX,
   LuMessageSquare,
   LuSend,
   LuChevronUp,
   LuChevronDown,
+  LuSmile, // [EMOJI]
 } from "react-icons/lu";
 import { useAuth } from "../../auth/AuthContext";
 import { socket } from "../../lib/socket";
@@ -13,6 +14,9 @@ import { getOrCreateWith, sendText } from "../../api/chatService";
 import { getAvailableNowProfessionals } from "../../api/professionalService";
 // [ADD] SFX WebAudio
 import SFX from "../../lib/sfx";
+
+// [EMOJI] lazy-load del picker alternativo
+const EmojiPicker = lazy(() => import("emoji-picker-react"));
 
 /**
  * props:
@@ -221,7 +225,10 @@ export default function ChatDock({ chats = [], onOpenChat }) {
       </div>
 
       {/* Ventanas flotantes (desktop) */}
-      <div className="hidden md:flex fixed right-4 bottom-24 z-40 gap-3">
+      <div
+        className="hidden md:flex fixed right-4 bottom-24 z-40 gap-3
+                   flex-row-reverse flex-wrap-reverse max-w-[calc(100vw-2rem)]" // [RESP]
+      >
         {windows.map((w) => (
           <ChatWindow
             key={w.peerId}
@@ -288,6 +295,33 @@ function ChatWindow({
   const listRef = useRef(null);
 
   const seenIdsRef = useRef(new Set());
+
+  // [EMOJI] estado + refs para popover de ventana
+  const [showPicker, setShowPicker] = useState(false);
+  const inputRef = useRef(null);
+  const insertAtCursor = (el, t) => {
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const before = el.value.slice(0, start);
+    const after = el.value.slice(end);
+    const next = `${before}${t}${after}`;
+    setText(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + t.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+  useEffect(() => {
+    const onAway = (e) => {
+      if (!showPicker) return;
+      const el = document.getElementById(`emoji-popover-win-${peerId}`);
+      if (el && !el.contains(e.target)) setShowPicker(false);
+    };
+    document.addEventListener("mousedown", onAway);
+    return () => document.removeEventListener("mousedown", onAway);
+  }, [showPicker, peerId]);
+  // [EMOJI] FIN
 
   useEffect(() => {
     let mounted = true;
@@ -424,7 +458,7 @@ function ChatWindow({
 
   return (
     <div
-      className={`w-[320px] ${isMobile ? "w-full h-[70vh]" : "h-96"} rounded-2xl border bg-white shadow-xl overflow-hidden`}
+      className={`w-[min(92vw,320px)] ${isMobile ? "w-full h-[70vh]" : "h-96"} rounded-2xl border bg-white shadow-xl overflow-visible`} // [RESP]
     >
       <div className="px-3 py-2 bg-slate-800 text-white flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
@@ -510,13 +544,51 @@ function ChatWindow({
           if (!sending) handleSend();
         }}
       >
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Escribí un mensaje…"
-          className="flex-1 text-sm rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-slate-300"
-          disabled={!chatId}
-        />
+        {/* [EMOJI] Input con botón 🙂 a la izquierda y popover */}
+        <div className="relative flex-1">
+          <button
+            type="button"
+            onClick={() => setShowPicker((v) => !v)}
+            aria-label="Insertar emoji"
+            className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg grid place-items-center text-slate-600 hover:bg-slate-100"
+          >
+            <LuSmile className="h-5 w-5" />
+          </button>
+
+          <input
+            ref={inputRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Escribí un mensaje…"
+            className="w-full text-sm rounded-xl border px-10 pr-3 py-2 outline-none focus:ring-2 focus:ring-slate-300"
+            disabled={!chatId}
+          />
+
+          {showPicker && (
+            <div
+              id={`emoji-popover-win-${peerId}`}
+              className="absolute bottom-12 left-0 z-20"
+            >
+              <Suspense fallback={<div className="text-xs text-gray-500 p-2">Cargando emojis…</div>}>
+                <EmojiPicker
+                  lazyLoadEmojis
+                  onEmojiClick={(emojiData) => {
+                    const ch = emojiData.emoji || "";
+                    if (ch && inputRef.current) {
+                      insertAtCursor(inputRef.current, ch);
+                    }
+                    setShowPicker(false);
+                  }}
+                  theme="light"
+                  searchDisabled={false}
+                  skinTonesDisabled={false}
+                />
+              </Suspense>
+            </div>
+          )}
+        </div>
+        {/* [EMOJI] FIN */}
+
         <button
           type="submit"
           disabled={sending || !chatId}

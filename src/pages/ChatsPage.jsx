@@ -1,6 +1,6 @@
 // src/pages/ChatsPage.jsx
 // [CHANGE] Sonidos ahora con WebAudio (SFX). Sin <audio> ni mp3. Layout mobile sólo aquí.
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react"; // [EMOJI] +lazy,Suspense
 import {
   useParams,
   useSearchParams,
@@ -16,12 +16,16 @@ import {
   LuSend,
   LuChevronLeft,
   LuLoaderCircle,
+  LuSmile, // [EMOJI]
 } from "react-icons/lu";
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
 import { getAvailableNowProfessionals } from "../api/professionalService";
 // [ADD] SFX WebAudio (reemplaza a mp3)
 import SFX from "../lib/sfx";
+
+// [EMOJI] lazy-load del picker alternativo (ESM-friendly)
+const EmojiPicker = lazy(() => import("emoji-picker-react"));
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const ASSET_BASE = API.replace(/\/api\/?$/, "");
@@ -130,6 +134,29 @@ export default function ChatsPage() {
 
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
+
+  // [EMOJI] estado + helpers de inserción
+  const [showPicker, setShowPicker] = useState(false);
+  const insertAtCursor = (inputEl, text) => {
+    const start = inputEl.selectionStart ?? inputEl.value.length;
+    const end = inputEl.selectionEnd ?? inputEl.value.length;
+    const before = inputEl.value.slice(0, start);
+    const after = inputEl.value.slice(end);
+    inputEl.value = `${before}${text}${after}`;
+    const pos = start + text.length;
+    inputEl.setSelectionRange(pos, pos);
+    inputEl.focus();
+  };
+  useEffect(() => {
+    const onClickAway = (e) => {
+      if (!showPicker) return;
+      const el = document.getElementById("emoji-picker-popover-main");
+      if (el && !el.contains(e.target)) setShowPicker(false);
+    };
+    document.addEventListener("mousedown", onClickAway);
+    return () => document.removeEventListener("mousedown", onClickAway);
+  }, [showPicker]);
+  // [EMOJI] FIN
 
   // [KEEP] helper local para mobile
   const isMobile = () => window.innerWidth < 768;
@@ -476,13 +503,50 @@ export default function ChatsPage() {
               className="flex items-center gap-2 p-3 border-t bg-white"
               style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
             >
-              <input
-                ref={inputRef}
-                className="flex-1 border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-                placeholder="Escribí un mensaje…"
-                disabled={!chat?._id}
-                onFocus={() => isMobile() && scrollToBottom(false)}
-              />
+              {/* [EMOJI] botón 🙂 a la izquierda + popover lazy */}
+              <div className="relative flex-1">
+                <button
+                  type="button"
+                  onClick={() => setShowPicker((v) => !v)}
+                  aria-label="Insertar emoji"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg grid place-items-center text-slate-600 hover:bg-slate-100"
+                >
+                  <LuSmile className="h-5 w-5" />
+                </button>
+
+                <input
+                  ref={inputRef}
+                  className="w-full border rounded-xl px-10 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                  placeholder="Escribí un mensaje…"
+                  disabled={!chat?._id}
+                  onFocus={() => isMobile() && scrollToBottom(false)}
+                />
+
+                {showPicker && (
+                  <div
+                    id="emoji-picker-popover-main"
+                    className="absolute bottom-12 left-0 z-20"
+                  >
+                    <Suspense fallback={<div className="text-xs text-gray-500 p-2">Cargando emojis…</div>}>
+                      <EmojiPicker
+                        lazyLoadEmojis
+                        onEmojiClick={(emojiData) => {
+                          const ch = emojiData.emoji || "";
+                          if (ch && inputRef.current) {
+                            insertAtCursor(inputRef.current, ch);
+                          }
+                          setShowPicker(false);
+                        }}
+                        theme="light"
+                        searchDisabled={false}
+                        skinTonesDisabled={false}
+                      />
+                    </Suspense>
+                  </div>
+                )}
+              </div>
+              {/* [EMOJI] FIN */}
+
               <button
                 type="submit"
                 disabled={sending || !chat?._id}

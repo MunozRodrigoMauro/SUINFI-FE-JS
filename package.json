@@ -16,6 +16,7 @@
         "cors": "^2.8.5",
         "date-fns": "^4.1.0",
         "date-fns-tz": "^3.2.0",
+        "emoji-picker-react": "^4.14.1",
         "flag-icons": "^7.5.0",
         "framer-motion": "^12.23.12",
         "leaflet": "^1.9.4",

@@ -23,6 +23,9 @@ importers:
       date-fns-tz:
         specifier: ^3.2.0
         version: 3.2.0(date-fns@4.1.0)
+      emoji-picker-react:
+        specifier: ^4.14.1
+        version: 4.14.1(react@19.1.1)
       flag-icons:
         specifier: ^7.5.0
         version: 7.5.0
@@ -881,6 +884,12 @@ packages:
   electron-to-chromium@1.5.227:
     resolution: {integrity: sha512-ITxuoPfJu3lsNWUi2lBM2PaBPYgH3uqmxut5vmBxgYvyI4AlJ6P3Cai1O76mOrkJCBzq0IxWg/NtqOrpu/0gKA==}
 
+  emoji-picker-react@4.14.1:
+    resolution: {integrity: sha512-4N6dCHr8Z5P52ICdncSxrY0ZcgUtb9Y3o4eBsy6HLpOMhka9AoiWMZ4/hJK0SQNYMIb7MQ+/NT5dqotpo9OXVA==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      react: '>=16'
+
   engine.io-client@6.6.3:
     resolution: {integrity: sha512-T0iLjnyNWahNyv/lcjS2y4oE358tVS/SYQNxYXGAJ9/GLgH4VCvOQ/mhTjqU88mLZCQgiG8RIegFHYCdVC+j5w==}
 
@@ -1002,6 +1011,9 @@ packages:
 
   flag-icons@7.5.0:
     resolution: {integrity: sha512-kd+MNXviFIg5hijH766tt+3x76ele1AXlo4zDdCxIvqWZhKt4T83bOtxUOOMlTx/EcFdUMH5yvQgYlFh1EqqFg==}
+
+  flairup@1.0.0:
+    resolution: {integrity: sha512-IKlE+pNvL2R+kVL1kEhUYqRxVqeFnjiIvHWDMLFXNaqyUdFXQM2wte44EfMYJNHkW16X991t2Zg8apKkhv7OBA==}
 
   flat-cache@4.0.1:
     resolution: {integrity: sha512-f7ccFPK3SXFHpx15UIGyRJ/FJQctuKZ0zVuN3frBo4HnK3cay9VEW0R6yPYFHC0AgqhukPzKjq22t5DmAyqGyw==}
@@ -2320,6 +2332,11 @@ snapshots:
 
   electron-to-chromium@1.5.227: {}
 
+  emoji-picker-react@4.14.1(react@19.1.1):
+    dependencies:
+      flairup: 1.0.0
+      react: 19.1.1
+
   engine.io-client@6.6.3:
     dependencies:
       '@socket.io/component-emitter': 3.1.2
@@ -2484,6 +2501,8 @@ snapshots:
       path-exists: 4.0.0
 
   flag-icons@7.5.0: {}
+
+  flairup@1.0.0: {}
 
   flat-cache@4.0.1:
     dependencies:

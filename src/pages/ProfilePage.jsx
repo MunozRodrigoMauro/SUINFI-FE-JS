@@ -1944,7 +1944,7 @@ export default function ProfilePage() {
                     </div>
                     <div className="rounded-xl overflow-hidden border">
                       <MapCanvas
-                        center={coords || { lat: -34.6037, lng: -58.3816 }}
+                        center={origin || { lat: -31.5375, lng: -68.5257 }}
                         markers={[]}
                         radiusKm={null}
                         zoom={coords ? 15 : 12}
