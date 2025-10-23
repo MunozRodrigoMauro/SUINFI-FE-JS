@@ -22,7 +22,7 @@ function LoginPage() {
       const user = await login({ email, password });
       const roleRoute = {
         admin: "/dashboard/admin",
-        user: "/dashboard/user",
+        user: "/request", // <-- CAMBIO: antes "/dashboard/user"
         professional: "/dashboard/professional",
       };
       if (roleRoute[user.role]) {

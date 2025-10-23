@@ -1,5 +1,6 @@
+// src/routes/index.jsx
 import React, { useEffect } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import HomePage from "../pages/HomePage";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
@@ -12,7 +13,7 @@ import AdminDashboard from "../pages/AdminDashboard";
 import ProfilePage from "../pages/ProfilePage";
 import ProfessionalAvailabilityPage from "../pages/ProfessionalAvailabilityPage";
 import ProfessionalDetailPage from "../pages/ProfessionalDetailPage";
-import BookingsPage from "../pages/BookingsPage";            // ⬅️ corregido
+import BookingsPage from "../pages/BookingsPage";
 import ProfessionalServicesPage from "../pages/ProfessionalServicesPage";
 import ChatsPage from "../pages/ChatsPage";
 import VerifyEmailPage from "../pages/VerifyEmailPage";
@@ -23,13 +24,23 @@ import CheckoutReturnPage from "../pages/CheckoutReturnPage";
 import PointsPage from "../pages/PointsPage";
 import RewardsCatalogPage from "../pages/RewardsCatalogPage";
 import RedemptionDetailPage from "../pages/RedemptionDetailPage";
-// 🆕
 import GoogleCallbackPage from "../pages/GoogleCallbackPage";
-// 🆕 Liquidaciones admin
 import SettlementsPage from "../pages/admin/SettlementsPage";
-// 🟢 Nuevo Scroll automático
 import ScrollToTop from "../components/common/ScrollToTop";
 import TermsPage from "../pages/TermsPage";
+import RequestServicePage from "../pages/RequestServicePage";
+
+// [CHANGE HERE] gate para que el dashboard user sólo abra si venís con ready=1
+function UserDashGate({ children }) {
+  const loc = useLocation();
+  const params = new URLSearchParams(loc.search);
+  const ready = params.get("ready") === "1";
+  if (!ready) return <Navigate to="/request" replace />;
+  return children;
+}
+
+// [CHANGE HERE] importá el Provider del flujo
+import { SearchProvider } from "../context/SearchContext";
 
 function AppRoutes() {
   const { loading } = useAuth();
@@ -50,7 +61,7 @@ function AppRoutes() {
 
   return (
     <>
-      <ScrollToTop /> {/* 🟢 hace scroll hacia arriba en cada cambio de ruta */}
+      <ScrollToTop />
 
       <Routes>
         {/* Públicas con Navbar */}
@@ -84,7 +95,9 @@ function AppRoutes() {
             path="/dashboard/user"
             element={
               <PrivateRoute allowedRoles={["user"]}>
-                <UserDashboard />
+                <UserDashGate>
+                  <UserDashboard />
+                </UserDashGate>
               </PrivateRoute>
             }
           />
@@ -178,6 +191,19 @@ function AppRoutes() {
               </PrivateRoute>
             }
           />
+
+          {/* [CHANGE HERE] /request envuelto por SearchProvider */}
+          <Route
+            path="/request"
+            element={
+              <PrivateRoute allowedRoles={["user"]}>
+                <SearchProvider>
+                  <RequestServicePage />
+                </SearchProvider>
+              </PrivateRoute>
+            }
+          />
+
           <Route
             path="/redemptions/:id"
             element={

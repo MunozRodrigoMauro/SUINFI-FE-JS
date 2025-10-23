@@ -77,7 +77,7 @@ function HeroSection() {
               md:text-[clamp(2.25rem,4.2vw,3.75rem)]
             "
           >
-            Conectá con profesionales en tiempo real
+            Conectá con servicios y profesionales en tiempo real
           </h1>
 
           {/* CTA */}
