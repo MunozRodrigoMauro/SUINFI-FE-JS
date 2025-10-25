@@ -469,7 +469,7 @@ const MapCanvas = forwardRef(function MapCanvas({
           title="Centrar en mi ubicación"
           className="
             pointer-events-auto
-            w-12 h-12 rounded-full bg-white/95 backdrop-blur border border-slate-300
+            w-14 h-14 sm:w-12 sm:h-12 rounded-full bg-white/95 backdrop-blur border border-slate-300
             shadow-md hover:bg-white active:scale-95
             flex items-center justify-center
             touch-manipulation

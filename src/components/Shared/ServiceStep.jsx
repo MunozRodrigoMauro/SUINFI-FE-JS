@@ -112,6 +112,26 @@ const matchAllGroups = (groups, idx) => {
   );
 };
 
+/* ===== [CAMBIO HIGHLIGHT] helper para resaltar coincidencias (igual estilo que en ProfessionalServicesPage) ===== */
+const highlight = (text = "", query = "") => {
+  if (!query) return text;
+  try {
+    const qEsc = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const parts = String(text).split(new RegExp(`(${qEsc})`, "ig"));
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark key={i} className="bg-amber-200 text-black px-1 rounded">
+          {part}
+        </mark>
+      ) : (
+        <span key={i}>{part}</span>
+      )
+    );
+  } catch {
+    return text;
+  }
+};
+
 /* ===== Componente ===== */
 
 export default function ServiceStep({ selectedIds = [], onAdd, onRemove, onConfirm }) {
@@ -184,8 +204,57 @@ export default function ServiceStep({ selectedIds = [], onAdd, onRemove, onConfi
     const base = Array.isArray(all) ? all : [];
     const groups = buildQueryGroups(q);
     if (!groups.length) return base.slice(0, 400);
+
+    // --- Ranking por relevancia ---
+    const nq = norm(q);
+    const sq = stem(nq);
+    const firstTok = nq.split(/\s+/).filter(Boolean)[0] || "";
+
+    const scoreOf = (s) => {
+      const nameN = norm(s.name || "");
+      const nameS = stem(nameN);
+      const catN = norm(s.categoryName || "");
+      const big = s._idx.big;
+      const words = s._idx.words;
+
+      let score = 0;
+
+      for (const grp of groups) {
+        let got = false;
+        if (grp.some((t) => words.has(t))) {
+          score += 25;
+          got = true;
+        }
+        if (!got && grp.some((t) => [...words].some((w) => w.startsWith(t)))) {
+          score += 14;
+          got = true;
+        }
+        if (!got && grp.some((t) => big.includes(t))) {
+          score += 6;
+        }
+      }
+
+      if (nameN === nq) score += 120;
+      if (nameN.startsWith(nq)) score += 40;
+      if (nameS === sq) score += 35;
+      if (nameS.startsWith(sq)) score += 22;
+
+      if (firstTok && nameN.startsWith(firstTok)) score += 28;
+
+      if (catN.includes(nq)) score += 8;
+      if (catN.startsWith(firstTok)) score += 10;
+
+      score += Math.max(0, 18 - Math.min(18, (nameN.length / 4) | 0));
+
+      return score;
+    };
+
     const matched = base.filter((s) => matchAllGroups(groups, s._idx));
-    return matched.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 250);
+    return matched
+      .map((s) => ({ s, score: scoreOf(s) }))
+      .sort((a, b) => b.score - a.score || a.s.name.localeCompare(b.s.name))
+      .slice(0, 250)
+      .map((x) => x.s);
   }, [all, q]);
 
   const confirmEnabled = selectedIds.length > 0;
@@ -231,10 +300,11 @@ export default function ServiceStep({ selectedIds = [], onAdd, onRemove, onConfi
                     }
                   />
                   <span className="truncate">
-                    {s.name}
+                    {/* [CAMBIO HIGHLIGHT] */}
+                    {highlight(s.name, q)}
                     {s.categoryName ? (
                       <span className="ml-2 text-xs text-slate-500">
-                        · {s.categoryName}
+                        · {highlight(s.categoryName, q)}
                       </span>
                     ) : null}
                   </span>
