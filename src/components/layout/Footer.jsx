@@ -103,6 +103,10 @@ const handleInicioClick = (e) => {
                   </Link>
                 </li>
 
+                <li>
+                  <a href="/faq" className="hover:text-white">Preguntas Frecuentes</a>
+                </li>
+
                 {user && (
                   <li>
                     <a
@@ -202,6 +206,10 @@ const handleInicioClick = (e) => {
                   >
                     Términos y condiciones
                   </Link>
+                </li>
+
+                <li>
+                  <a href="/faq" className="hover:text-white">Preguntas Frecuentes</a>
                 </li>
 
                 {user && (
