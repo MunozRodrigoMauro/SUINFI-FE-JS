@@ -1,7 +1,7 @@
 // src/pages/UserDashboard.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { getProfessionals, getAvailableNowProfessionals } from "../api/professionalService";
 import { getMyBookings } from "../api/bookingService";
 import BookingStatusBadge from "../components/booking/BookingStatusBadge";
@@ -17,7 +17,6 @@ import ChatDock from "../components/chat/ChatDock";
 import useLiveProLocations from "../hooks/useLiveProLocations";
 // [CHANGE] importamos la nueva barra de filtros tipo LinkedIn
 import FilterBar from "../components/Shared/FilterBar";
-import { useLocation } from "react-router-dom"; // [CHANGE] leer query params
 import EmptyState from "../components/Shared/EmptyState";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
@@ -321,6 +320,8 @@ function UserDashboard() {
   // [CHANGE] removemos UI de categoría/servicio aquí (vienen de los 3 pasos previos).
   const [categoryId, setCategoryId] = useState("");
   const [serviceId, setServiceId] = useState("");
+  // [CHANGE] Soporte multi-servicios
+  const [serviceIds, setServiceIds] = useState([]); // <<<<
 
   // disponible ahora se maneja desde la FilterBar (pero lo mantenemos en state para BE)
   const [availableNow, setAvailableNow] = useState(false);
@@ -339,12 +340,18 @@ function UserDashboard() {
   const [categories, setCategories] = useState([]);
   const [services, setServices] = useState([]);
   const [allResults, setAllResults] = useState([]);     // catálogo crudo del BE
-  const [visResults, setVisResults] = useState([]);     // [CHANGE] resultados tras filtros visuales
+  const [visResults, setVisResults] = useState([]);     // resultados tras filtros visuales
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
+
+  // [CHANGE] no disparar fetch hasta parsear QS
+  const [qsReady, setQsReady] = useState(false); // <<<<
+
+  // [CHANGE] bloquear “Disponible ahora” si se llega por intent=now
+  const [lockAvailableToggle, setLockAvailableToggle] = useState(false); // <<<<
 
   // posiciones live
   const livePositions = useLiveProLocations({ ttlMs: 120000 });
@@ -612,6 +619,7 @@ function UserDashboard() {
     const radius = parseFloat(qs.get("radius"));
     const servicesCsv = (qs.get("services") || "").trim();
     const available = qs.get("availableNow") === "true";
+    const catQ = (qs.get("categoryId") || "").trim(); // [CHANGE] leer categoria opcional
 
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       setOrigin({ lat, lng });
@@ -626,31 +634,50 @@ function UserDashboard() {
 
     if (Number.isFinite(radius)) setRadiusKm(radius);
 
-    const [firstService] = servicesCsv.split(",").filter(Boolean);
+    // [CHANGE] SOPORTE multi-servicio (CSV -> array)
+    const ids = servicesCsv.split(",").map((s) => s.trim()).filter(Boolean);
+    setServiceIds(ids);
+    const [firstService] = ids;
     if (firstService) setServiceId(firstService);
 
+    if (catQ) setCategoryId(catQ); // [CHANGE]
+
+    // [CHANGE] setear toggle y BLOQUEO según intent original
     setFilterBarValues((v) => ({ ...v, availableNow: available }));
     setAvailableNow(available);
+    setLockAvailableToggle(available);
+
+    setQsReady(true); // [CHANGE] listo para buscar
   }, [location.search]);
 
   // === Catálogo desde BE (sin romper nada)
   const refetchCatalog = async () => {
+    if (!qsReady) return; // [CHANGE] no buscar antes de parsear QS
+
     setLoading(true);
     try {
       let list = [];
-      const wantNow = filterBarValues.availableNow; // [CHANGE]
+      const wantNow = filterBarValues.availableNow;
       if (origin?.lat != null && origin?.lng != null) {
         const params = { lat: origin.lat, lng: origin.lng, maxDistance: radiusKm * 1000 };
         if (wantNow) params.availableNow = true;
         if (categoryId) params.categoryId = categoryId;
-        if (serviceId) params.serviceId = serviceId;
+
+        // [CHANGE] pasar TODOS los servicios seleccionados
+        if (serviceIds.length) params.services = serviceIds.join(",");
+        else if (serviceId) params.serviceId = serviceId;
+
         const { data } = await axiosUser.get(`${API}/professionals/nearby`, { params });
         list = Array.isArray(data) ? data : [];
       } else {
         const params = {};
         if (wantNow) params.availableNow = true;
         if (categoryId) params.categoryId = categoryId;
-        if (serviceId) params.serviceId = serviceId;
+
+        // [CHANGE] pasar TODOS los servicios seleccionados
+        if (serviceIds.length) params.services = serviceIds.join(",");
+        else if (serviceId) params.serviceId = serviceId;
+
         const data = await getProfessionals(params);
         list = Array.isArray(data) ? data : data.items || [];
       }
@@ -676,7 +703,16 @@ function UserDashboard() {
   useEffect(() => {
     refetchCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [origin?.lat, origin?.lng, radiusKm, filterBarValues.availableNow, categoryId, serviceId]);
+  }, [
+    qsReady,                 // [CHANGE]
+    origin?.lat,
+    origin?.lng,
+    radiusKm,
+    filterBarValues.availableNow,
+    categoryId,
+    serviceId,
+    serviceIds.join("|"),    // [CHANGE]
+  ]);
 
   // Reanotar con livePositions y volver a aplicar filtros visuales
   useEffect(() => {
@@ -703,38 +739,52 @@ function UserDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allResults, livePositions, filterBarValues, radiusKm, origin?.lat, origin?.lng]);
 
-  // [CHANGE MAP2] aplicar availableNow también de forma visual (runtime)
+  // aplicar filtros visuales
   function applyVisualFilters(base) {
     const v = filterBarValues;
     let arr = Array.isArray(base) ? base.slice() : [];
 
-    // [CHANGE MAP2] si está activo, quedate solo con los ON en vivo
+    // [CHANGE] Filtro visual por servicios (fallback si el BE no filtra)
+    if (serviceIds.length > 0) {
+      const setIds = new Set(serviceIds);
+      arr = arr.filter((p) => {
+        const svcs = Array.isArray(p?.services) ? p.services : [];
+        return svcs.some((s) => {
+          const sid = typeof s === "string" ? s : s?._id;
+          return sid && setIds.has(String(sid));
+        });
+      });
+    } else if (serviceId) {
+      arr = arr.filter((p) => {
+        const svcs = Array.isArray(p?.services) ? p.services : [];
+        return svcs.some((s) => {
+          const sid = typeof s === "string" ? s : s?._id;
+          return String(sid) === String(serviceId);
+        });
+      });
+    }
+
     if (v.availableNow) {
       arr = arr.filter((p) => !!p?._isOn);
     }
-
     if (v.linkedIn) {
       arr = arr.filter((p) => {
         const url = p?.linkedinUrl || p?.user?.linkedin || "";
         return isValidLinkedinUrl(url);
       });
     }
-
     if (v.whatsapp) {
       arr = arr.filter((p) => {
         const w = p?.contact?.whatsapp || p?.user?.whatsapp || p?.whatsapp || "";
         return String(w).trim().length >= 7;
       });
     }
-
     if (v.deposit) {
       arr = arr.filter((p) => !!p?.depositEnabled);
     }
-
     if (v.hasPhoto) {
       arr = arr.filter((p) => !!p?.user?.avatarUrl);
     }
-
     if (v.docs && v.docs !== "any") {
       arr = arr.filter((p) => {
         const d = p?.documents || {};
@@ -746,12 +796,10 @@ function UserDashboard() {
         return true;
       });
     }
-
     if (Number(v.minRating) > 0) {
       arr = arr.filter((p) => Number(p?.averageRating || 0) >= Number(v.minRating));
     }
 
-    // Orden
     if (v.sort === "distance") {
       arr.sort((a, b) => {
         const da = a._distanceKm ?? Infinity;
@@ -760,9 +808,8 @@ function UserDashboard() {
       });
     } else if (v.sort === "rating") {
       arr.sort((a, b) => Number(b?.averageRating || 0) - Number(a?.averageRating || 0));
-    } // "relevance" = orden tal como viene
+    }
 
-    // paginado y estados derivados
     setVisResults(arr);
     setTotal(arr.length);
     const pgs = Math.max(1, Math.ceil(arr.length / PAGE_SIZE));
@@ -814,19 +861,51 @@ function UserDashboard() {
     (async () => setRecentChats(await fetchMyChats()))();
   }, []);
 
-  // Disponibles ahora (cinta)
-  const refetchOnline = async () => {
-    setLoadingOnline(true);
-    try {
-      const list = await getAvailableNowProfessionals();
-      setOnlinePros(Array.isArray(list) ? list : []);
-    } finally {
-      setLoadingOnline(false);
+// Disponibles ahora (cinta)
+const refetchOnline = async () => {
+  setLoadingOnline(true);
+  try {
+    // mismos params que usás en refetchCatalog
+    const params = {};
+    if (origin?.lat != null && origin?.lng != null) {
+      params.lat = origin.lat;
+      params.lng = origin.lng;
+      params.maxDistance = radiusKm * 1000;
     }
-  };
-  useEffect(() => {
-    refetchOnline();
-  }, []);
+    if (categoryId) params.categoryId = categoryId;
+    if (serviceIds.length) params.services = serviceIds.join(",");
+    else if (serviceId) params.serviceId = serviceId;
+
+    let list = await getAvailableNowProfessionals(params);
+    let arr = Array.isArray(list) ? list : [];
+
+    // Fallback por si el backend ignora category/services:
+    if (params.categoryId) {
+      arr = arr.filter((p) => {
+        const cId = p?.category?._id || p?.category;
+        return String(cId) === String(params.categoryId);
+      });
+    }
+    if (params.services || params.serviceId) {
+      const wanted = new Set(
+        (params.services ? params.services.split(",") : [params.serviceId]).filter(Boolean).map(String)
+      );
+      arr = arr.filter((p) => {
+        const svcs = Array.isArray(p?.services) ? p.services : [];
+        return svcs.some((s) => wanted.has(String(typeof s === "string" ? s : s?._id)));
+      });
+    }
+
+    setOnlinePros(arr);
+  } finally {
+    setLoadingOnline(false);
+  }
+};
+
+useEffect(() => {
+  refetchOnline();
+}, [origin, radiusKm, categoryId, serviceIds, serviceId]);
+
 
   // Marcadores del mapa — usan visResults para respetar filtros
   const mapMarkers = useMemo(() => {
@@ -892,15 +971,21 @@ function UserDashboard() {
       : "bg-gradient-to-r from-black to-[#111827]"
   }`}
 >
-
       <div className="max-w-7xl mx-auto px-4 py-2 lg:py-3">
         <FilterBar
           scrolledLikeNavbar={scrolled} // <- importante: el FilterBar queda transparente
           value={filterBarValues}
           onChange={(next) => {
+            // [CHANGE] si viniste en modo "now", forzamos el toggle en true
+            if (lockAvailableToggle) {
+              next = { ...next, availableNow: true };
+            }
             setFilterBarValues(next);
             setAvailableNow(!!next.availableNow);
           }}
+          lockAvailableNow={lockAvailableToggle}
+          // Si tu FilterBar soporta prop para deshabilitar el control, podés pasar:
+          // lockAvailableNow={lockAvailableToggle}
         />
       </div>
     </div>
@@ -925,7 +1010,7 @@ function UserDashboard() {
         (nudgeMap ? "sm:ring-4 sm:ring-amber-300 sm:ring-offset-2 sm:ring-offset-white sm:shadow-[0_0_0_6px_rgba(251,191,36,0.25)]" : "")
       }
     >
-      {/* [CHANGE MAP2] sin key dinámico -> sin flicker */}
+      {/* sin key dinámico -> sin flicker */}
       <MapCanvas
         center={origin || { lat: -31.5375, lng: -68.5257 }}
         markers={mapMarkers}
@@ -1025,7 +1110,7 @@ function UserDashboard() {
             <span className="text-sm text-gray-600">{total} resultados</span>
           </div>
 
-          {loading ? (
+{loading ? (
   <div className="grid md:grid-cols-3 gap-6 mb-8">
     {Array.from({ length: 6 }).map((_, i) => (
       <div key={i} className="animate-pulse bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -1042,118 +1127,124 @@ function UserDashboard() {
       </div>
     ))}
   </div>
+) : items.length === 0 ? (
+  // ⬇️ VACÍO estilo “Disponibles ahora”
+  <div className="rounded-2xl p-6 mb-8 bg-gradient-to-r from-emerald-50/60 via-white to-sky-50/60 border border-emerald-100">
+    <div className="flex items-center justify-center text-sm text-gray-600">
+      No hay profesionales para esa búsqueda
+    </div>
+  </div>
 ) : (
   <div className="grid md:grid-cols-3 gap-6 mb-8">
+    {items.map((p) => {
+      const name = p?.user?.name || "Profesional";
+      const email = p?.user?.email || "";
+      const servicesNames = (p.services || []).map((s) => s?.name).filter(Boolean);
+      const firstService = servicesNames[0] || "Servicio";
+      const restCount = Math.max(0, servicesNames.length - 1);
+      const avatar = p?.user?.avatarUrl ? absUrl(p.user.avatarUrl) : "";
+      const initial = (name[0] || "P").toUpperCase();
+      const linkedIn = p?.linkedinUrl || p?.user?.linkedin || "";
 
-              {items.map((p) => {
-                const name = p?.user?.name || "Profesional";
-                const email = p?.user?.email || "";
-                const servicesNames = (p.services || []).map((s) => s?.name).filter(Boolean);
-                const firstService = servicesNames[0] || "Servicio";
-                const restCount = Math.max(0, servicesNames.length - 1);
-                const avatar = p?.user?.avatarUrl ? absUrl(p.user.avatarUrl) : "";
-                const initial = (name[0] || "P").toUpperCase();
-                const linkedIn = p?.linkedinUrl || p?.user?.linkedin || "";
-
-                return (
-                  <div key={p._id} className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
-                    <div className="relative h-20 bg-gradient-to-r from-slate-800 to-slate-700">
-                      <AvailablePill on={!!p._isOn} className="absolute top-3 left-3" />
-                      <span className="absolute top-3 right-3"><LinkedInBadge url={linkedIn} /></span>
-                      <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white overflow-hidden grid place-items-center text-slate-800 font-bold">
-                        {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : initial}
-                      </div>
-                    </div>
-
-                    <div className="pt-8 px-4 pb-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-base font-semibold leading-5 truncate max-w-[240px]">
-                            {name}
-                          </h3>
-                          <p className="text-xs text-gray-600 truncate max-w-[240px]">{email}</p>
-                        </div>
-                        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                          ⭐ {(p?.averageRating || 0).toFixed(1)}{typeof p?.reviews === "number" ? ` (${p.reviews})` : ""}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">{firstService}</span>
-                        {restCount > 0 && (
-                          <span className="text-xs px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">+{restCount} más</span>
-                        )}
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {(() => {
-                          const d = p.documents || {};
-                          const cr = d.criminalRecord;
-                          const lic = d.license;
-                          const crExpired = cr?.expiresAt ? new Date(cr.expiresAt).getTime() < Date.now() : false;
-                          return (
-                            <>
-                              <span
-                                className={`text-[11px] px-2 py-0.5 rounded-full border ${
-                                  cr?.url
-                                    ? crExpired
-                                      ? "bg-rose-50 text-rose-700 border-rose-200"
-                                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : "bg-gray-50 text-gray-700 border-gray-200"
-                                }`}
-                              >
-                                Antecedentes: {cr?.url ? (crExpired ? "vencido" : "vigente") : "pendiente"}
-                              </span>
-                              <span
-                                className={`text-[11px] px-2 py-0.5 rounded-full border ${
-                                  lic?.url ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"
-                                }`}
-                              >
-                                Matrícula: {lic?.url ? "cargada" : "pendiente"}
-                              </span>
-                              <DepositBadge p={p} />
-                            </>
-                          );
-                        })()}
-                      </div>
-
-                      {origin?.lat != null && p?._distanceKm != null && (
-                        <div className="mt-2 text-xs text-gray-600">A {fmtKm(p._distanceKm)} de tu ubicación</div>
-                      )}
-
-                      <div className="mt-4 flex justify-end gap-2">
-                        <button
-                          onClick={() => navigate(`/chats/${p?.user?._id}`)}
-                          className="text-sm font-medium bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
-                        >
-                          Chatear
-                        </button>
-                        {/* botón Reservar condicionado por radio */}
-                        <button
-                          onClick={() => !p?._inRadius ? null : navigate(`/professional/${p._id}?reserve=1`)}
-                          disabled={!p?._inRadius}
-                          title={!p?._inRadius ? "Fuera de tu radio seleccionado" : "Reservar turno"}
-                          className={`text-sm font-medium px-4 py-2 rounded-md shadow-sm cursor-pointer ${
-                            !p?._inRadius
-                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                              : "text-white bg-slate-800 hover:bg-slate-700"
-                          }`}
-                        >
-                          {p?._inRadius ? "Reservar" : "No disponible"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+      return (
+        <div key={p._id} className="group bg-white text-black rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition">
+          <div className="relative h-20 bg-gradient-to-r from-slate-800 to-slate-700">
+            <AvailablePill on={!!p._isOn} className="absolute top-3 left-3" />
+            <span className="absolute top-3 right-3"><LinkedInBadge url={linkedIn} /></span>
+            <div className="absolute -bottom-6 left-4 h-12 w-12 rounded-full ring-4 ring-white bg-white overflow-hidden grid place-items-center text-slate-800 font-bold">
+              {avatar ? <img src={avatar} alt="avatar" className="h-full w-full object-cover" /> : initial}
             </div>
-          )}
+          </div>
 
-          {/* Resultados (catálogo) */}
-          <div className="flex items-center justify-between mb-4 mt-6">
+          <div className="pt-8 px-4 pb-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold leading-5 truncate max-w-[240px]">
+                  {name}
+                </h3>
+                <p className="text-xs text-gray-600 truncate max-w-[240px]">{email}</p>
+              </div>
+              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                ⭐ {(p?.averageRating || 0).toFixed(1)}{typeof p?.reviews === "number" ? ` (${p.reviews})` : ""}
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">{firstService}</span>
+              {restCount > 0 && (
+                <span className="text-xs px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">+{restCount} más</span>
+              )}
+            </div>
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(() => {
+                const d = p.documents || {};
+                const cr = d.criminalRecord;
+                const lic = d.license;
+                const crExpired = cr?.expiresAt ? new Date(cr.expiresAt).getTime() < Date.now() : false;
+                return (
+                  <>
+                    <span
+                      className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                        cr?.url
+                          ? crExpired
+                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-gray-50 text-gray-700 border-gray-200"
+                      }`}
+                    >
+                      Antecedentes: {cr?.url ? (crExpired ? "vencido" : "vigente") : "pendiente"}
+                    </span>
+                    <span
+                      className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                        lic?.url ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"
+                      }`}
+                    >
+                      Matrícula: {lic?.url ? "cargada" : "pendiente"}
+                    </span>
+                    <DepositBadge p={p} />
+                  </>
+                );
+              })()}
+            </div>
+
+            {origin?.lat != null && p?._distanceKm != null && (
+              <div className="mt-2 text-xs text-gray-600">A {fmtKm(p._distanceKm)} de tu ubicación</div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => navigate(`/chats/${p?.user?._id}`)}
+                className="text-sm font-medium bg-white text-[#111827] border px-4 py-2 rounded-md hover:bg-gray-50 cursor-pointer"
+              >
+                Chatear
+              </button>
+              <button
+                onClick={() => !p?._inRadius ? null : navigate(`/professional/${p._id}?reserve=1`)}
+                disabled={!p?._inRadius}
+                title={!p?._inRadius ? "Fuera de tu radio seleccionado" : "Reservar turno"}
+                className={`text-sm font-medium px-4 py-2 rounded-md shadow-sm cursor-pointer ${
+                  !p?._inRadius
+                    ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                    : "text-white bg-slate-800 hover:bg-slate-700"
+                }`}
+              >
+                {p?._inRadius ? "Reservar" : "No disponible"}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+)}
+
+
+          {/* Resultados (catálogo) NUNCA TOCARLO NI BORRARLO!!!!*/}
+          {/* <div className="flex items-center justify-between mb-4 mt-6">
             <h2 className="text-2xl font-semibold">Profesionales</h2>
             <span className="text-sm text-gray-600">{total} resultados</span>
-          </div>
+          </div> */}
 
           {pages > 1 && (
             <div className="flex items-center justify-center gap-2 mb-16">

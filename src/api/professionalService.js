@@ -22,8 +22,8 @@ export const getProfessionals = async (params = {}) => {
   return data;
 };
 
-export const getAvailableNowProfessionals = async () => {
-  const { data } = await axiosUser.get(`${API}/professionals/available-now`);
+export const getAvailableNowProfessionals = async (params = {}) => {
+  const { data } = await axiosUser.get(`${API}/professionals/available-now`, { params });
   return data;
 };
 

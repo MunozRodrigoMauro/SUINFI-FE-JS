@@ -12,7 +12,7 @@ import React from "react";
     usamos `docs` como key y valores "any" | "criminal" | "license" | "both".
 */
 
-export default function FilterBar({ value, onChange, scrolledLikeNavbar = false }) {
+export default function FilterBar({ value, onChange, scrolledLikeNavbar = false, lockAvailableNow = false }) {
   const v = {
     availableNow: false,
     linkedIn: false,
@@ -32,23 +32,32 @@ export default function FilterBar({ value, onChange, scrolledLikeNavbar = false 
 
   const Toggle = ({ label, keyName }) => {
     const active = !!v[keyName];
+    const disabled = keyName === "availableNow" && lockAvailableNow;
+
     return (
       <button
         type="button"
-        className={`${pillBase} ${active ? pillOn : pillOff}`}
+         aria-disabled={disabled ? "true" : "false"}
+  title={disabled ? "Bloqueado por 'Disponibles ahora'" : label}
+  className={`${pillBase} ${active ? pillOn : pillOff} ${disabled ? "opacity-50 cursor-not-allowed ring-1 ring-white/40" : ""}`} 
         onMouseEnter={(e) => {
+          if (disabled) return;
           if (!active) {
             e.currentTarget.classList.remove("bg-white", "text-[#0a0e17]");
             e.currentTarget.classList.add("bg-[#0a0e17]", "text-white");
           }
         }}
         onMouseLeave={(e) => {
+           if (disabled) return; 
           if (!active) {
             e.currentTarget.classList.remove("bg-[#0a0e17]", "text-white");
             e.currentTarget.classList.add("bg-white", "text-[#0a0e17]");
           }
         }}
-        onClick={() => onChange?.({ ...v, [keyName]: !active })}
+        onClick={() => {
+  if (disabled) return;        // ← salí temprano si está bloqueado
+  onChange?.({ ...v, [keyName]: !active });
+}}
       >
         <span className={"h-2 w-2 rounded-full " + (active ? "bg-emerald-400" : "bg-slate-300")} />
         {label}

@@ -44,6 +44,8 @@ export default function LocationStep({ value, onChange, onConfirm }) {
   const ignoreNextSync = useRef(false);
   const reverseControllerRef = useRef(null);
   const [isReversing, setIsReversing] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+
 
   // CHANGES: ref al MapCanvas para poder llamar flyTo animado
   const mapRef = useRef(null);
@@ -94,7 +96,7 @@ export default function LocationStep({ value, onChange, onConfirm }) {
         setFarDistKm(null);
         afterEnsure?.();
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
@@ -160,6 +162,7 @@ export default function LocationStep({ value, onChange, onConfirm }) {
   const handleUseProfile = () => {
     const loc = user?.address?.location;
     if (loc?.lat && loc?.lng) {
+      setIsLocating(true);
       const label =
         user?.address?.label ||
         [
@@ -188,6 +191,7 @@ export default function LocationStep({ value, onChange, onConfirm }) {
         suppressDragRef.current = true;
         mapRef.current?.flyTo({ lat: loc.lat, lng: loc.lng, zoom: 15 });
         setTimeout(() => (suppressDragRef.current = false), FLY_MS);
+        setTimeout(() => setIsLocating(false), FLY_MS);
       });
     } else {
       alert("No encontramos una dirección guardada en tu perfil.");
@@ -199,6 +203,7 @@ export default function LocationStep({ value, onChange, onConfirm }) {
       alert("GPS no disponible en este navegador.");
       return;
     }
+    setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -224,21 +229,25 @@ export default function LocationStep({ value, onChange, onConfirm }) {
         suppressDragRef.current = true;
         mapRef.current?.flyTo({ lat: c.lat, lng: c.lng, zoom: 15 });
         setTimeout(() => (suppressDragRef.current = false), FLY_MS);
+        setTimeout(() => setIsLocating(false), FLY_MS);
       },
-      () => alert("No pudimos obtener tu ubicación.")
+      () => {
+      alert("No pudimos obtener tu ubicación.");
+      setIsLocating(false); // ← aquí
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
-useEffect(() => {
-  if (!value?.lat || !value?.lng) return;
-  if (mapIsMovingRef.current || originSource === "map-drag") return;
-  if (ignoreNextSync.current) {
-    ignoreNextSync.current = false;
-    return;
-  }
-  setCenter({ lat: value.lat, lng: value.lng });
-}, [value?.lat, value?.lng, originSource]);
-
+  useEffect(() => {
+    if (!value?.lat || !value?.lng) return;
+    if (mapIsMovingRef.current || originSource === "map-drag") return;
+    if (ignoreNextSync.current) {
+      ignoreNextSync.current = false;
+      return;
+    }
+    setCenter({ lat: value.lat, lng: value.lng });
+  }, [value?.lat, value?.lng, originSource]);
 
   const canConfirm = !!value?.lat && !!value?.lng;
 
@@ -261,6 +270,18 @@ useEffect(() => {
   // CHANGES [WARN-STICKY 3/3]: persistencia sin auto-timeout; solo se oculta si NO aplica la lógica o si el usuario lo cierra
   const showGpsWarning = baseWarning && !warnDismissed;
 
+  // CHANGES [AUTO-GPS 1/2]: bandera para auto-intentar GPS solo una vez
+  const didAutoGPSRef = useRef(false);
+
+  // CHANGES [AUTO-GPS 2/2]: al montar, si no hay value inicial, intentamos centrar en ubicación actual
+  useEffect(() => {
+    if (didAutoGPSRef.current) return;
+    if (value?.lat && value?.lng) return;
+    didAutoGPSRef.current = true;
+    handleUseCurrent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="w-full">
       <div className="bg-white/95 text-slate-900 rounded-2xl border border-slate-200 p-6 shadow-xl relative">
@@ -270,12 +291,12 @@ useEffect(() => {
 
         <input
           type="text"
-          value={isReversing ? "Obteniendo dirección…" : query}
-          readOnly={isReversing}
+          value={(isLocating || isReversing) ? "Obteniendo dirección…" : query}
+          readOnly={isLocating || isReversing}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Calle y número, barrio o ciudad"
           className={`w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 ${
-            isReversing
+            (isLocating || isReversing)
               ? "bg-slate-50 text-slate-400 italic"
               : "focus:ring-emerald-500 bg-white text-slate-900"
           }`}
@@ -360,9 +381,9 @@ useEffect(() => {
             }}
           />
 
-          {isReversing && (
+          {(isLocating || isReversing) && (
             <div className="absolute inset-x-0 bottom-0 bg-white/80 backdrop-blur-sm text-slate-600 text-sm text-center py-2 animate-pulse">
-              Obteniendo dirección…
+              {isLocating ? "Obteniendo ubicación…" : "Obteniendo dirección…"}
             </div>
           )}
         </div>
@@ -415,12 +436,14 @@ useEffect(() => {
         <div className="mt-5 flex flex-col sm:flex-row gap-3">
           <button
             onClick={handleUseProfile}
+            disabled={isLocating}
             className="flex-1 px-4 py-2 rounded-xl border border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer"
           >
             Usar mi ubicación (perfil)
           </button>
           <button
             onClick={handleUseCurrent}
+            disabled={isLocating}
             className="flex-1 px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 hover:bg-slate-100 cursor-pointer"
           >
             Usar mi ubicación actual

@@ -111,52 +111,95 @@ const SECTIONS = [
       </p>
     ),
   },
-  {
-    id: "pagos",
-    title: "6. Pagos, facturación, reembolsos y contracargos",
-    body: (
-      <>
-        <p>
-          Procesamiento: los pagos se cursan con Mercado Pago; CuyIT no almacena datos de tarjeta.
-          Las políticas de contracargo y reembolso siguen las reglas del procesador y bancos
-          emisores.
+{
+  id: "pagos",
+  title: "6. Pagos, facturación, reembolsos y contracargos",
+  body: (
+    <>
+      <div className="rounded-xl border border-sky-300/50 bg-sky-50 p-4">
+        <p className="font-semibold text-sky-900">Procesamiento de pagos</p>
+        <p className="mt-1 text-sm text-sky-900/90">
+          Los pagos se cursan con <b>Mercado Pago</b>; CuyIT no almacena datos de tarjeta. Las
+          políticas de contracargo y reembolso siguen las reglas del procesador y bancos emisores.
         </p>
-        <p className="mt-2">
-          Rol de CuyIT: actuamos como agente de cobro limitado del Profesional cuando aplique. El
-          Profesional es responsable de facturar correctamente (AFIP) y del comprobante. El
-          profesional puede requerir al usuario una “seña” o “anticipo” entre $2.000 y $5.000 (ARS).
-          CuyIT no interviene ni asume responsabilidad por dichos acuerdos.
+      </div>
+
+      <div className="mt-4 rounded-xl border border-indigo-300/50 bg-indigo-50 p-4">
+        <p className="font-semibold text-indigo-900">Rol de CuyIT — Agente de cobro limitado</p>
+        <p className="mt-1 text-sm text-indigo-900/90">
+          CuyIT actúa como <b>agente de cobro limitado del Profesional</b>. Podemos{" "}
+          <b>recibir y retener una seña/anticipo</b> en nombre del Profesional <b>hasta</b> que el
+          Usuario <b>confirme</b> la realización del servicio o venza el plazo establecido para la confirmación.
+          CuyIT no es entidad financiera ni ofrece servicios de escrow regulado.
         </p>
-        <p className="mt-2">
-          Cargos y comisiones: CuyIT puede aplicar en el futuro comisiones por uso/plataforma,
-          visibles antes de pagar.
+      </div>
+
+      <div className="mt-4 rounded-xl border border-emerald-300/50 bg-emerald-50 p-4">
+        <p className="font-semibold text-emerald-900">Señas / anticipos</p>
+        <p className="mt-1 text-sm text-emerald-900/90">
+          El Profesional puede requerir una seña entre <b>$2.000 y $5.000 (ARS)</b>. La seña se{" "}
+          <b>libera</b> al Profesional cuando: (i) el Usuario confirma el servicio, o (ii) transcurre
+          el plazo de confirmación sin objeciones. Si el Usuario <b>impugna</b> dentro del plazo, CuyIT
+          podrá <b>retener temporalmente</b> la seña mientras las partes aportan antecedentes y, de
+          corresponder, proceder a <b>devolución total/parcial</b> o <b>liberación</b>, según la evidencia
+          y/o resolución del procesador.
         </p>
-        <p className="mt-2">
-          Reembolsos/cancelaciones: se gestionan por el canal del procesador (p. ej., Mercado Pago)
-          y evidencia del caso. Los reclamos por anticipos, cancelaciones o incumplimientos se
-          resuelven directamente entre cliente y profesional.
+      </div>
+
+      <p className="mt-3">
+        <b>Comisiones:</b> actualmente CuyIT <b>no cobra comisión</b> por uso de plataforma. Si en el
+        futuro se aplicaran cargos, se informarán <b>antes de pagar</b>.
+      </p>
+
+      <p className="mt-2">
+        <b>Reembolsos/cancelaciones:</b> se gestionan por el canal del procesador (p. ej., Mercado Pago)
+        y evidencia del caso. Los reclamos por anticipos, cancelaciones o incumplimientos se resuelven
+        primariamente entre Usuario y Profesional; CuyIT puede <b>retener preventivamente</b> fondos de
+        seña hasta contar con elementos suficientes para decidir liberación o devolución.
+      </p>
+    </>
+  ),
+},
+ {
+  id: "conducta",
+  title: "7. Conducta de Usuarios y Profesionales",
+  body: (
+    <>
+      <div className="rounded-xl border border-rose-300/50 bg-rose-50 p-4">
+        <p className="font-semibold text-rose-900">Tolerancia cero — contenido/actividades prohibidas</p>
+        <p className="mt-1 text-sm text-rose-900/90">
+          Está <b>estrictamente prohibido</b>: fraude, suplantación de identidad, manipulación de reputación,
+          uso de malware, interferencias técnicas, contratación para <b>fines ilícitos</b> y{" "}
+          <b>cualquier servicio, contenido o actividad de carácter sexual</b> (incluye pornografía,
+          prostitución, ofrecimiento o solicitud de servicios sexuales, contenido erótico explícito,
+          explotación sexual o conductas contrarias a la ley y a las buenas costumbres).
         </p>
-      </>
-    ),
-  },
-  {
-    id: "conducta",
-    title: "7. Conducta de Usuarios y Profesionales",
-    body: (
-      <>
-        <p>
-          Prohibido: fraude, suplantación, manipulación de reputación, uso de malware, interferencias
-          técnicas, contratación para fines ilícitos o peligrosos. Podemos suspender cuentas ante
-          incumplimientos, fraude o riesgo de seguridad.
+        <p className="mt-2 text-sm text-rose-900/90">
+          CuyIT podrá <b>remover contenido</b> y <b>suspender o cancelar cuentas</b> que infrinjan estas reglas.
         </p>
-        <p className="mt-2">
-          CuyIT se reserva el derecho de denunciar ante autoridades cualquier actividad sospechosa
-          de fraude, abuso, trata de personas, explotación sexual o laboral, o cualquier conducta
-          ilícita detectada dentro de la plataforma.
+      </div>
+
+      <div className="mt-4 rounded-xl border border-amber-300/50 bg-amber-50 p-4">
+        <p className="font-semibold text-amber-900">Seguridad y cumplimiento</p>
+        <p className="mt-1 text-sm text-amber-900/90">
+          Podemos aplicar medidas preventivas (bloqueo de perfiles/solicitudes, limitaciones de uso,
+          verificación adicional) ante <b>riesgo de seguridad</b> o incumplimiento. Usuarios y Profesionales
+          se comprometen a (i) brindar información veraz; (ii) actuar con respeto y sin discriminación;
+          (iii) cumplir normativa vigente (consumidor, laboral, impositiva, higiene y seguridad, etc.).
         </p>
-      </>
-    ),
-  },
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-300/60 bg-slate-50 p-4">
+        <p className="font-semibold text-slate-900">Colaboración con autoridades</p>
+        <p className="mt-1 text-sm text-slate-900/90">
+          CuyIT <b>reportará</b> a autoridades competentes cualquier indicio de fraude, abuso, trata de
+          personas, explotación sexual o laboral u otras conductas ilícitas detectadas en la plataforma, y
+          podrá <b>conservar y poner a disposición</b> registros pertinentes conforme la ley.
+        </p>
+      </div>
+    </>
+  ),
+},
   {
     id: "geo",
     title: "8. Geolocalización, disponibilidad y seguridad",

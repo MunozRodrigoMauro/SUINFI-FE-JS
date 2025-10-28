@@ -258,6 +258,7 @@ export default function ServiceStep({ selectedIds = [], onAdd, onRemove, onConfi
   }, [all, q]);
 
   const confirmEnabled = selectedIds.length > 0;
+  const confirmLabel = confirmEnabled ? "Confirmar servicios seleccionados" : "Confirmar servicio"; // CHANGES: texto reactivo del CTA
 
   return (
     <div className="w-full">
@@ -271,9 +272,29 @@ export default function ServiceStep({ selectedIds = [], onAdd, onRemove, onConfi
           className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-900"
         />
 
+        {/* CHANGES: Hint compacto sobre multiselección */}
+        <div className="mt-2 mb-1 text-xs text-slate-500 flex items-center gap-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-5.25a.75.75 0 011.5 0v2a.75.75 0 01-1.5 0v-2zM10 6.5a1 1 0 100 2 1 1 0 000-2z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span>
+            Podés elegir <b>una o varias</b> opciones.
+          </span>
+        </div>
+
         {/* Scroll visible también en mobile 👇 */}
         <div
-          className="mt-3 max-h-64 overflow-y-scroll rounded-xl border border-slate-200 bg-white text-slate-900 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
+          className="mt-1 max-h-64 overflow-y-scroll rounded-xl border border-slate-200 bg-white text-slate-900 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
           style={{
             WebkitOverflowScrolling: "touch",
             scrollbarWidth: "thin",
@@ -323,7 +344,7 @@ export default function ServiceStep({ selectedIds = [], onAdd, onRemove, onConfi
               : "bg-emerald-200 text-white cursor-not-allowed"
           }`}
         >
-          Confirmar servicio
+          {confirmLabel}
         </button>
       </div>
     </div>

@@ -88,8 +88,7 @@ const FAQ_ITEMS = [
     question: "6) ¿Tiene costo usar la app como usuario?",
     answer: (
       <p>
-        No hay membresía básica. Solo pagás la seña de los servicios que solicitás ,y cualquier cargo visible
-        al momento de pagar (si aplica).
+        No hay membresía básica. Solo pagás la seña de los servicios que solicitás (Si aplica).
       </p>
     ),
   },
@@ -262,7 +261,7 @@ const FAQ_ITEMS = [
     question: "3) ¿Qué hago si detecto conducta inapropiada o fraude?",
     answer: (
       <p>
-        Reportalo a soporte. CuyIT puede suspender/eliminar cuentas que infrinjan Términos o
+        Reportalo a soporte, a través de la reserva, una vez completado el servicio o atención al cliente desde cualquier medio. CuyIT puede suspender/eliminar cuentas que infrinjan Términos o
         políticas de seguridad.
       </p>
     ),
