@@ -1,8 +1,10 @@
 // src/components/Shared/LocationStep.jsx
 // CHANGES: usar un ref hacia MapCanvas y llamar ref.current.flyTo(...) en los dos botones
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import MapCanvas from "../map/ProfessionalRequest/MapCanvas";
+// CHANGES: import para navegar al perfil desde el modal
+import { useNavigate } from "react-router-dom";
 
 const fmt = (n) => Number(n).toFixed(5);
 const MAP_KEY = import.meta.env.VITE_MAP_API_KEY;
@@ -23,8 +25,35 @@ const haversineKm = (a, b) => {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 };
 
+// CHANGES: regla mínima de onboarding para CLIENTE con alias comunes
+function needsClientOnboarding(user) {
+  if (!user || user.role !== "user") return false;
+
+  const okName =
+    typeof user.name === "string" && user.name.trim().length >= 2;
+
+  const a = user.address || {};
+  const hasCoords =
+    a?.location &&
+    typeof a.location.lat === "number" &&
+    typeof a.location.lng === "number";
+
+  const hasBasicAddress =
+    (a.street && a.street.trim()) &&
+    (a.city && a.city.trim()) &&
+    (a.country && a.country.trim());
+
+  // Ahora pedimos AMBAS cosas completas para considerar "perfil OK"
+  const profileOk = okName && hasCoords && hasBasicAddress;
+
+  return !profileOk;
+}
+
 export default function LocationStep({ value, onChange, onConfirm }) {
   const { user } = useAuth();
+  // CHANGES: navegar a /profile desde el modal
+  const navigate = useNavigate();
+
   const [query, setQuery] = useState(value?.label || "");
   const [suggests, setSuggests] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +74,6 @@ export default function LocationStep({ value, onChange, onConfirm }) {
   const reverseControllerRef = useRef(null);
   const [isReversing, setIsReversing] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
-
 
   // CHANGES: ref al MapCanvas para poder llamar flyTo animado
   const mapRef = useRef(null);
@@ -279,11 +307,84 @@ export default function LocationStep({ value, onChange, onConfirm }) {
     if (value?.lat && value?.lng) return;
     didAutoGPSRef.current = true;
     handleUseCurrent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-comments
   }, []);
+
+  // CHANGES: flag por query param para forzar el popup (ej: ...?onb=1)
+  const forceOnb = useMemo(
+    () => new URLSearchParams(window.location.search).get("onb") === "1",
+    []
+  );
+
+  // CHANGES: estado del popup (modal) de onboarding en LocationStep
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+
+  // CHANGES: abrir el modal si el cliente necesita completar datos o si 'onb=1'
+  useEffect(() => {
+    const should = forceOnb || needsClientOnboarding(user);
+    setShowOnboardingModal(!!should);
+  }, [forceOnb, user?.role, user?.name, user?.address?.location?.lat, user?.address?.location?.lng, user?.address?.street, user?.address?.city, user?.address?.country]);
 
   return (
     <div className="w-full">
+      {/* CHANGES: Modal de onboarding en el paso de ubicación */}
+      {showOnboardingModal && (
+        <div
+          // [CHANGE HERE] Overlay con blur y degradado
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-gradient-to-b from-black/50 to-black/30 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="onb-title"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200">
+            <div className="px-5 pt-4 pb-3 border-b flex items-start justify-between gap-3">
+              <h3 id="onb-title" className="text-lg font-semibold">
+                Mejorá tu ubicación y experiencia
+              </h3>
+              <button
+                onClick={() => setShowOnboardingModal(false)}
+                className="px-2 py-1 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+                aria-label="Cerrar"
+                title="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-sm text-slate-600">
+                Para encontrar profesionales cerca y mostrar direcciones correctas, necesitamos que tengas{" "}
+                <b>tu nombre</b> y <b>tu dirección</b> configurados. Podés usar tu perfil o tu ubicación actual ahora mismo.
+              </p>
+
+              {/* [CHANGE HERE] Sólo dos botones: Completar ahora / Recordar después */}
+              <div className="mt-4 grid gap-2">
+                <button
+                  onClick={() => {
+                    setShowOnboardingModal(false);
+                    navigate("/profile");
+                  }}
+                  className="w-full px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                >
+                  Completar ahora
+                </button>
+                <button
+                  onClick={() => {
+                    setShowOnboardingModal(false);
+                  }}
+                  className="w-full px-4 py-2 rounded-lg border bg-white hover:bg-slate-50 cursor-pointer"
+                >
+                  Recordar después
+                </button>
+              </div>
+
+              <p className="mt-3 text-xs text-slate-500">
+                Tip: también podés <b>arrastrar el pin</b> en el mapa para ajustar el punto exacto.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white/95 text-slate-900 rounded-2xl border border-slate-200 p-6 shadow-xl relative">
         <h2 className="text-xl font-semibold mb-3">
           ¿Dónde necesitás el servicio?

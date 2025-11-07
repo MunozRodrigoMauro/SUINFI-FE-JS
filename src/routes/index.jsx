@@ -47,17 +47,6 @@ function AppRoutes() {
   const { loading } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const handler = (e) => {
-      const { requiresOnboarding, role } = e.detail || {};
-      if (requiresOnboarding && role === "professional") {
-        navigate("/profile", { replace: true });
-      }
-    };
-    window.addEventListener("suinfi:onboarding", handler);
-    return () => window.removeEventListener("suinfi:onboarding", handler);
-  }, [navigate]);
-
   if (loading) return <p className="text-center mt-10">Cargando sesión...</p>;
 
   return (

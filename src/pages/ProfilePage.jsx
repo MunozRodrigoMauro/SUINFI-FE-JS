@@ -165,6 +165,10 @@ const timeAgo = (ts) => {
   return `hace ${h} horas`;
 };
 
+// [FLYTO] Animación de vuelo tipo Uber
+const FLY_MS = 1200; // igual que en LocationStep
+
+
 // ───────── toasts
 function Toasts({ items, onDismiss }) {
   return (
@@ -316,6 +320,20 @@ function CountryDropdown({ open, anchorRef, valueISO, onSelect, onClose }) {
   );
 }
 
+// [FIX-PROFILE-LOC] Acepta {lat,lng} o {coordinates:[lng,lat]}
+function coerceLoc(loc) {
+  if (!loc) return null;
+  if (Number.isFinite(loc.lat) && Number.isFinite(loc.lng)) return { lat: loc.lat, lng: loc.lng };
+  if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) {
+    const [lng, lat] = loc.coordinates;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+  if (Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude)) {
+    return { lat: loc.latitude, lng: loc.longitude };
+  }
+  return null;
+}
+
 // NEW: convierte "363 s" → "363 sur", "239 o" → "239 oeste", etc.
 function normalizeAddressLine(a = {}) {
   const parts = [];
@@ -458,6 +476,10 @@ const patchProWhatsapp = ({ number, visible, nationality }) =>
 export default function ProfilePage() {
   const { user, setUser, bumpAvatarVersion } = useAuth();
   const navigate = useNavigate();
+  
+  // [FLYTO] refs deben vivir dentro del componente
+  const mapRef = useRef(null);
+  const suppressDragRef = useRef(false);
 
   const [hasProfessional, setHasProfessional] = useState(false);
 
@@ -639,17 +661,16 @@ export default function ProfilePage() {
           unit: me?.address?.unit || "",
           postalCode: me?.address?.postalCode || "",
         }));
-        const loc = me?.address?.location;
-        if (loc?.lat != null && loc?.lng != null) {
-          setCoords({ lat: loc.lat, lng: loc.lng });
-          const lbl =
-            me?.address?.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
-          setLabel(lbl);
-          setQuery(lbl);
-        } else {
-          const line = buildAddressLabel(me?.address || {});
-          if (line) setQuery(line);
-        }
+      const loc = coerceLoc(me?.address?.location);
+      if (loc) {
+        setCoords(loc);
+        const lbl = me?.address?.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+        setLabel(lbl);
+        setQuery(lbl);
+      } else {
+        const line = buildAddressLabel(me?.address || {});
+        if (line) setQuery(line);
+      }
         meWa = me?.whatsapp || null;
       } catch {
         setMsgType("error");
@@ -866,6 +887,10 @@ export default function ProfilePage() {
           setQuery(q);
           setDirtyAddress(true);
         }
+        // [FLYTO] animación tipo Uber al centro actual
+       suppressDragRef.current = true;
+       mapRef.current?.flyTo({ lat: c.lat, lng: c.lng, zoom: 15 });
+       setTimeout(() => (suppressDragRef.current = false), FLY_MS);
       },
       () => {}
     );
@@ -1944,12 +1969,17 @@ export default function ProfilePage() {
                     </div>
                     <div className="rounded-xl overflow-hidden border">
                       <MapCanvas
-                        center={origin || { lat: -31.5375, lng: -68.5257 }}
+                        ref={mapRef} // [FLYTO] para poder llamar flyTo
+                        center={coords || { lat: -31.5375, lng: -68.5257 }}
                         markers={[]}
                         radiusKm={null}
                         zoom={coords ? 15 : 12}
                         draggableOrigin
+                        onOriginDrag={() => {
+                          if (suppressDragRef.current) return; // [FLYTO] ignorar drag durante el vuelo
+                        }}
                         onOriginDragEnd={async ({ lat, lng }) => {
+                          if (suppressDragRef.current) return; // [FLYTO] idem
                           setCoords({ lat, lng });
                           try {
                             const res = await reverseGeocodeFull(lat, lng);
@@ -2601,7 +2631,7 @@ export default function ProfilePage() {
                 disabled={!allowPanel}
                 aria-disabled={!allowPanel}
                 title={allowPanel ? "Abrir panel" : "Completá Nombre y Dirección para habilitar el panel"}
-                className={`px-5 py-2 rounded-lg ${
+                className={`px-5 py-2 rounded-lg cursor-pointer ${
                   allowPanel
                     ? "bg-indigo-600 hover:bg-indigo-700 text-white"
                     : "bg-gray-200 text-gray-500 cursor-not-allowed"

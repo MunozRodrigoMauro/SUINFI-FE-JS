@@ -211,6 +211,13 @@ function Navbar() {
                   </button>
 
                   <button
+                    onClick={() => navigate("/faq")}
+                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
+                  >
+                    Preguntas Frecuentes
+                  </button>
+
+                  <button
                     onClick={() => { logout(); navigate("/login"); }}
                     className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
                   >
@@ -301,6 +308,9 @@ function Navbar() {
                           </Link>
                           <Link to="/chats" onClick={() => setOpenMenu(false)} className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer" role="menuitem">
                             Mensajes
+                          </Link>
+                          <Link to="/bookings" onClick={() => setOpenMenu(false)} className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer" role="menuitem">
+                            Mis Reservas
                           </Link>
                           <Link to="/points" onClick={() => setOpenMenu(false)} className="block px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer" role="menuitem">
                             Mis Puntos

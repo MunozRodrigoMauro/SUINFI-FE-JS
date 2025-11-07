@@ -1,3 +1,4 @@
+// src/auth/AuthContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { loginUser, verifyToken, getMyProfile } from "../api/userService";
@@ -33,6 +34,37 @@ function needsOnboarding(user) {
   return false;
 }
 
+// CHANGES: helper central para estado de perfil (cliente/profesional)
+function computeProfileStatus(user) {
+  const missing = [];
+  if (!user) return { isComplete: false, missing, role: null };
+
+  const role = user.role || "user";
+  const nameOk = (user.name || "").trim().length >= 2;
+
+  const a = user.address || {};
+  const addrOk =
+    (a.label && a.label.trim().length > 0) &&
+    typeof a.location?.lat === "number" &&
+    typeof a.location?.lng === "number";
+
+  if (!nameOk) missing.push("name");
+  if (!addrOk) missing.push("address");
+
+  if (role === "professional") {
+    const whatsappOk = Boolean((user.whatsapp?.number || "").trim());
+    if (!whatsappOk) missing.push("whatsapp");
+
+    // disponibilidad programada: bandera mínima
+    const availabilityOk = Boolean(user.availability?.weekly || user.availability?.blocks?.length);
+    if (!availabilityOk) missing.push("availability");
+  }
+
+  // Cliente: WhatsApp NO obligatorio, por consigna
+  const isComplete = missing.length === 0;
+  return { isComplete, missing, role };
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +75,9 @@ export function AuthProvider({ children }) {
   const location = useLocation();
 
   const requiresOnboarding = useMemo(() => needsOnboarding(user), [user]);
+
+  // CHANGES: status de perfil derivado (para PopApp)
+  const profileStatus = useMemo(() => computeProfileStatus(user), [user]);
 
   // --- helper: hidratar user tras auth (login/restore)
   const hydrateUserAfterAuth = async (token, baseUser) => {
@@ -151,6 +186,8 @@ export function AuthProvider({ children }) {
     requiresOnboarding,
     avatarVersion,
     bumpAvatarVersion,
+    // CHANGES: exponemos estado de perfil para el PopApp
+    profileStatus,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

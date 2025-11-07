@@ -14,7 +14,7 @@ function PrivateRoute({ children, allowedRoles }) {
   if (!user) return <Navigate to="/login" replace />
 
   // Logueado pero con rol incorrecto
-  if (!allowedRoles.includes(user.role)) return <Navigate to="/" replace />
+if (!allowedRoles.includes(user.role)) return <Navigate to="/" replace />
 
   // Logueado y con rol correcto
   return children

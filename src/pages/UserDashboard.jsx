@@ -863,6 +863,7 @@ function UserDashboard() {
 
 // Disponibles ahora (cinta)
 const refetchOnline = async () => {
+   if (!qsReady) return; 
   setLoadingOnline(true);
   try {
     // mismos params que usás en refetchCatalog
@@ -896,6 +897,16 @@ const refetchOnline = async () => {
       });
     }
 
+    // ⬇️ NUEVO: Fallback de DISTANCIA (igual lógica que el catálogo)
+    if (origin?.lat != null && origin?.lng != null && Number.isFinite(radiusKm)) {
+      arr = arr.filter((p) => {
+        const loc = normalizeProLoc(p);
+        if (!loc) return false;
+        const d = haversineKm(origin, { lat: loc.lat, lng: loc.lng });
+        return Number.isFinite(d) && d <= Number(radiusKm || 0);
+      });
+    }
+
     setOnlinePros(arr);
   } finally {
     setLoadingOnline(false);
@@ -904,7 +915,7 @@ const refetchOnline = async () => {
 
 useEffect(() => {
   refetchOnline();
-}, [origin, radiusKm, categoryId, serviceIds, serviceId]);
+}, [qsReady, origin?.lat, origin?.lng, radiusKm, categoryId, serviceId, serviceIds.join("|")]);
 
 
   // Marcadores del mapa — usan visResults para respetar filtros

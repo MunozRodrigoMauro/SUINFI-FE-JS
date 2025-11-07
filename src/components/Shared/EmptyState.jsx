@@ -73,7 +73,7 @@ export default function EmptyState({
         transition={{ delay: 0.5 }}
         onClick={onRetry || (() => (window.location.href = "/request"))}
         className="mt-8 px-6 py-2.5 rounded-lg text-white font-medium shadow-lg hover:shadow-xl transition 
-        bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 focus:ring-4 focus:ring-emerald-300"
+        bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 focus:ring-4 focus:ring-emerald-300 cursor-pointer"
       >
         Volver a buscar
       </motion.button>

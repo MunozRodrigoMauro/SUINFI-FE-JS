@@ -65,6 +65,7 @@ export default function BookingModal({ open, onClose, professional, services = [
               <label className="block text-sm text-gray-600 mb-1">Hora</label>
               <input
                 type="time"
+                step="60"                // ← permite elegir cualquier minuto
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2"

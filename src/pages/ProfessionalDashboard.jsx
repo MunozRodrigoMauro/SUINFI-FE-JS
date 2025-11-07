@@ -1,4 +1,5 @@
 // src/pages/ProfessionalDashboard.jsx
+// CHANGES: integrar ProfileNudge para profesionales con perfil incompleto
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -13,9 +14,10 @@ import { getBookingsForMe } from "../api/bookingService";
 import { formatDateTime } from "../utils/datetime";
 import { fetchMyChats } from "../api/chatService";
 import ChatDock from "../components/chat/ChatDock";
+import ProfileNudge from "../components/Shared/ProfileNudge"; // CHANGES
 
 function ProfessionalDashboard() {
-  const { user } = useAuth();
+  const { user, profileStatus } = useAuth(); // CHANGES
   const navigate = useNavigate();
 
   const [isAvailableNow, setIsAvailableNow] = useState(false);
@@ -240,6 +242,11 @@ function ProfessionalDashboard() {
 
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] py-24 px-4">
+      {/* CHANGES: PopApp si faltan mínimos */}
+      {user && !profileStatus?.isComplete && (
+        <ProfileNudge user={user} missing={profileStatus?.missing || []} />
+      )}
+
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">

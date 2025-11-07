@@ -1,15 +1,16 @@
 // src/api/bookingService.js
 import axiosUser from "./axiosUser";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+import { dateTimeToISO } from "../utils/datetime";
 
 // helper local: arma ISO con zona local del usuario
-const dateTimeToISO = (date, time) => {
-  // date: "YYYY-MM-DD", time: "HH:mm"
-  const [y, m, d] = date.split("-").map(Number);
-  const [hh, mm]  = time.split(":").map(Number);
-  const local = new Date(y, (m - 1), d, hh, mm, 0);
-  return new Date(local.getTime() - local.getTimezoneOffset() * 60000).toISOString();
-};
+// const dateTimeToISO = (date, time) => {
+//   // date: "YYYY-MM-DD", time: "HH:mm"
+//   const [y, m, d] = date.split("-").map(Number);
+//   const [hh, mm]  = time.split(":").map(Number);
+//   const local = new Date(y, (m - 1), d, hh, mm, 0);
+//   return new Date(local.getTime() - local.getTimezoneOffset() * 60000).toISOString();
+// };
 
 // Mapea errores del BE a mensajes de UX
 function friendlyBookingMessage(status, serverMsg = "", details = {}) {
@@ -43,7 +44,7 @@ export async function createBooking(payload) {
   try {
     const body = { ...payload };
     if (!body.scheduledAt && body.date && body.time) {
-      body.scheduledAt = dateTimeToISO(body.date, body.time);
+      body.scheduledAt = dateTimeToISO({ date: body.date, time: body.time });
     }
     const { data } = await axiosUser.post(`${API}/bookings`, body);
     return data;

@@ -125,7 +125,10 @@ function findNextAvailableSlot(professional, stepMin = 30, horizonDays = 14) {
     const toMin = hhmmToMin(sch.to);
 
     const currentMin = d.getHours() * 60 + d.getMinutes();
-    const startMinToday = roundUp(currentMin, stepMin);
+    // ⬇️ HOY + disponible ahora → usar minuto exacto (sin redondeo)
+    const startMinToday = (professional?.isAvailableNow && i === 0)
+      ? currentMin
+      : roundUp(currentMin, stepMin);
     const startMin = i === 0 ? Math.max(fromMin, startMinToday) : fromMin;
 
     if (startMin <= toMin) {
@@ -334,21 +337,18 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [], r
         setSavingInstant(false);
         return;
       }
-      const slot = findNextAvailableSlot(professional);
+      let slot = findNextAvailableSlot(professional);
+      // ⬇️ Si está "Disponible ahora", usamos hora exacta (sin redondear)
       if (professional?.isAvailableNow) {
-           const now = new Date();
-           const dateStr = [
-             now.getFullYear(),
-             String(now.getMonth() + 1).padStart(2, "0"),
-             String(now.getDate()).padStart(2, "0"),
-           ].join("-");
-           const minutes = now.getHours() * 60 + now.getMinutes();
-           const step = 30;
-           const rounded = Math.ceil(minutes / step) * step;
-           const hh = String(Math.floor(rounded / 60)).padStart(2, "0");
-           const mm = String(rounded % 60).padStart(2, "0");
-           slot.dateStr = dateStr;
-           slot.timeStr = `${hh}:${mm}`;
+        const now = new Date();
+        const dateStr = [
+          now.getFullYear(),
+          String(now.getMonth() + 1).padStart(2, "0"),
+          String(now.getDate()).padStart(2, "0"),
+        ].join("-");
+        const hh = String(now.getHours()).padStart(2, "0");
+        const mm = String(now.getMinutes()).padStart(2, "0");
+        slot = { dateStr, timeStr: `${hh}:${mm}` };
       }
 
       if (!professional?.depositEnabled) {
