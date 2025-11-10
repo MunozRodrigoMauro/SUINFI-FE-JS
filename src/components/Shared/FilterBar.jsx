@@ -26,7 +26,7 @@ export default function FilterBar({ value, onChange, scrolledLikeNavbar = false,
   };
 
   const pillBase =
-    "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs transition select-none";
+    "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs transition select-none cursor-pointer";
   const pillOff = "bg-white text-[#0a0e17] border-white";
   const pillOn = "bg-[#0a0e17] text-white border-white/20";
 
@@ -250,7 +250,7 @@ function Select({ value, onChange, options }) {
         h-8 px-3 rounded-full
         bg-white text-[#0a0e17] border border-white
         text-xs
-        focus:outline-none focus:ring-2 focus:ring-white/30
+        focus:outline-none focus:ring-2 focus:ring-white/30 cursor-pointer
       "
     >
       {options.map((o) => (

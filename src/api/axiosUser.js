@@ -19,6 +19,8 @@ const axiosUser = axios.create({
   // 👇 NO fijamos Content-Type por defecto; dejamos sólo Accept
   headers: { Accept: "application/json" },
   withCredentials: true,
+  // [CHANGE-TIMEOUT] evitar requests colgados
+  timeout: 20000,
 });
 
 function getToken() {
@@ -38,7 +40,6 @@ axiosUser.interceptors.request.use((config) => {
         delete config.headers["Content-Type"];
         delete config.headers["content-type"];
       }
-      // asegurar que no haya transformRequest que serialice
       config.transformRequest = [(d) => d];
     }
 
@@ -46,7 +47,10 @@ axiosUser.interceptors.request.use((config) => {
     const isVerifyEmail = /\/auth\/verify-email\//i.test(full);
     if (!isVerifyEmail) {
       const token = getToken();
-      if (token) config.headers.Authorization = `Bearer ${token}`;
+      if (token) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     } else if (config.headers?.Authorization) {
       delete config.headers.Authorization;
     }
@@ -56,7 +60,21 @@ axiosUser.interceptors.request.use((config) => {
 
 axiosUser.interceptors.response.use(
   (res) => res,
-  (err) => Promise.reject(err)
+  (err) => {
+    // [CHANGE-401] saneo de tokens inválidos y aviso global
+    const status = err?.response?.status;
+    if (status === 401) {
+      try {
+        localStorage.removeItem("auth_token");
+        sessionStorage.removeItem("auth_token");
+        localStorage.removeItem("token");
+      } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent("cuyit:unauthorized"));
+      } catch {}
+    }
+    return Promise.reject(err);
+  }
 );
 
 export default axiosUser;

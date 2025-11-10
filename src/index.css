@@ -1,1 +1,21 @@
 html { scroll-behavior: smooth; }
+
+/* ====== CHAT DOCK – FORCED LAYER (FIX) ====== */
+[data-chatdock-portal] {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+}
+
+[data-chatdock-portal] .cuyit-chatdock-root {
+  pointer-events: auto !important;
+}
+
+[data-chatdock-portal] .cuyit-chatdock-layer {
+  pointer-events: auto !important;
+}
+
+[data-chatdock-portal] * {
+  contain: none !important;
+}

@@ -1,10 +1,14 @@
+// src/layouts/MainLayout.jsx
 import React, { useEffect } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
 import { socket } from "../lib/socket"; // ✅ usamos el singleton
 
 function MainLayout() {
+  const location = useLocation();
+  const isChatsRoute = location.pathname.startsWith("/chats");
+
   useEffect(() => {
     const onConnect = () => {
       console.log("✅ socket connected", socket.id);
@@ -33,7 +37,15 @@ function MainLayout() {
       <main className="flex-grow">
         <Outlet />
       </main>
-      <Footer />
+
+      {/* En /chats ocultamos footer en mobile y lo mostramos en desktop */}
+      {isChatsRoute ? (
+        <div className="hidden md:block">
+          <Footer />
+        </div>
+      ) : (
+        <Footer />
+      )}
     </div>
   );
 }

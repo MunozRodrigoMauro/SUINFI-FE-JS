@@ -31,6 +31,7 @@ const MapCanvas = forwardRef(function MapCanvas({
   draggableOrigin = false,
   onOriginDrag,
   onOriginDragEnd,
+  onReady,  
 }, ref) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -65,14 +66,31 @@ const MapCanvas = forwardRef(function MapCanvas({
       cooperativeGestures: false,
     });
 
+
     map.dragPan.enable();
     map.scrollZoom.enable({ around: "center" });
     map.touchZoomRotate.enable({ around: "center" });
     map.keyboard.enable();
     map.boxZoom.enable();
 
+     // 👇 2) silenciamos ese error molesto
+    map.on("error", (e) => {
+      const msg = e?.error?.message || "";
+      if (msg.includes("signal is aborted")) return;
+      console.error("map error:", e.error);
+    });
+
     mapRef.current = map;
     lastCenterRef.current = { lat: centerInit[1], lng: centerInit[0] };
+
+    // 👇 3) avisamos al padre que el mapa ya está listo
+    if (map.isStyleLoaded()) {
+      onReady?.();
+    } else {
+      map.once("load", () => {
+        onReady?.();
+      });
+    }
 
     // Pin HTML fijo centrado
     const pin = document.createElement("div");

@@ -1,5 +1,5 @@
 // src/auth/AuthContext.jsx
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { loginUser, verifyToken, getMyProfile } from "../api/userService";
 import {
@@ -11,6 +11,8 @@ import {
   stopActivityTracking,
   beat,
 } from "../lib/socket";
+// [SFX-RECV-GLOBAL] importar SFX para reproducir sonido al recibir
+import SFX from "../lib/sfx";
 
 const AuthContext = createContext();
 
@@ -78,6 +80,25 @@ export function AuthProvider({ children }) {
 
   // CHANGES: status de perfil derivado (para PopApp)
   const profileStatus = useMemo(() => computeProfileStatus(user), [user]);
+
+  // [SFX-RECV-GLOBAL] flag: desbloqueo de audio tras primer gesto del usuario (sin reproducir sonido)
+  const audioUnlockedRef = useRef(false);
+  useEffect(() => {
+    const unlock = () => {
+      audioUnlockedRef.current = true;
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+      window.removeEventListener("touchstart", unlock);
+    };
+    window.addEventListener("pointerdown", unlock, { passive: true });
+    window.addEventListener("keydown", unlock, { passive: true });
+    window.addEventListener("touchstart", unlock, { passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+      window.removeEventListener("touchstart", unlock);
+    };
+  }, []);
 
   // --- helper: hidratar user tras auth (login/restore)
   const hydrateUserAfterAuth = async (token, baseUser) => {
@@ -176,6 +197,50 @@ export function AuthProvider({ children }) {
       socket.off("connect", onConnect);
     };
   }, [user?.id, user?._id]);
+
+  // [SFX-RECV-GLOBAL] Sonido global al recibir mensaje (evita duplicar si estás en /chats)
+  useEffect(() => {
+    if (!socket) return;
+
+    const chatRoutes = [
+      "/chats",
+      "/messages",
+      "/dashboard/professional/messages",
+    ];
+
+    const shouldMuteOnThisPage = (path) => {
+      // Si la ruta actual empieza con alguno de los paths de chat, dejamos que la página maneje el sonido
+      return chatRoutes.some((p) => path === p || path.startsWith(p + "/"));
+    };
+
+    const onNewMessage = (payload) => {
+      try {
+        if (!payload || !payload.message) return;
+
+        const myId = user?.id || user?._id;
+        const msg = payload.message;
+        const fromId = msg?.from?._id || msg?.from;
+
+        // Ignorar mis propios mensajes
+        if (String(fromId) === String(myId)) return;
+
+        // Evitar doble sonido cuando estamos dentro de la vista de chats (ChatsPage.jsx ya suena)
+        if (shouldMuteOnThisPage(window.location.pathname)) return;
+
+        // Opcional: si querés mutear cuando el documento está visible, sacá esta condición.
+        // La dejamos para sonar incluso si la pestaña está visible (pero fuera de la vista de chat).
+        // Si el usuario no hizo un gesto aún (mobile), no intentamos sonar para evitar bloqueos.
+        if (!audioUnlockedRef.current) return;
+
+        SFX.playRecv();
+      } catch {
+        // noop
+      }
+    };
+
+    socket.on("chat:message", onNewMessage);
+    return () => socket.off("chat:message", onNewMessage);
+  }, [user?.id, user?._id, location.pathname]);
 
   const value = {
     user,
