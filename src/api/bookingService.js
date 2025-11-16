@@ -1,4 +1,3 @@
-// src/api/bookingService.js
 import axiosUser from "./axiosUser";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 import { dateTimeToISO } from "../utils/datetime";
@@ -14,11 +13,26 @@ import { dateTimeToISO } from "../utils/datetime";
 
 // Mapea errores del BE a mensajes de UX
 function friendlyBookingMessage(status, serverMsg = "", details = {}) {
-  const raw = (serverMsg || "").toLowerCase();
+  const raw = String(serverMsg || "").toLowerCase().trim();
 
+  // 🎯 Distinguimos conflictos 409 por contenido del mensaje
   if (status === 409) {
-    return "Tenés una reserva pendiente con este profesional. Cancelala desde “Reservas” y volvé a intentarlo.";
+    // requiere seña → ir al checkout
+    if (raw.includes("requiere seña") || raw.includes("checkout")) {
+      return "Este profesional requiere seña. Iniciá la reserva desde el checkout.";
+    }
+    // horario ocupado
+    if (raw.includes("horario ya no está disponible") || raw.includes("horario") && raw.includes("disponible")) {
+      return "Ese horario ya no está disponible. Probá con otro turno.";
+    }
+    // reserva ya pendiente con el mismo profesional (guardrail)
+    if (raw.includes("ya tenés una reserva pendiente")) {
+      return "Tenés una reserva pendiente con este profesional. Cancelala desde “Reservas” y volvé a intentarlo.";
+    }
+    // fallback 409 (mantener mensaje claro)
+    return serverMsg || "No se pudo crear la reserva por un conflicto. Intentá con otro turno.";
   }
+
   if (status === 404) {
     return "No encontramos el profesional o servicio. Actualizá la página e intentá nuevamente.";
   }

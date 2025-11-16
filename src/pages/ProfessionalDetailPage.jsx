@@ -1,4 +1,3 @@
-// src/pages/ProfessionalDetailPage.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { getProfessionalById, getProfessionalDocsMeta } from "../api/professionalService";
@@ -267,13 +266,14 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [], r
   };
 
   // ⬇️ NUEVO: crear reserva directa cuando NO requiere seña
-  const startDirectBooking = async ({ professionalId, serviceId, date, time, note }) => {
+  const startDirectBooking = async ({ professionalId, serviceId, date, time, note, isImmediate = false }) => {
     const payload = {
       professionalId,
       serviceId,
       date,
       time,
       note: note?.trim() || "",
+      isImmediate,
     };
     const b = await createBooking(payload);
     onCreated?.(b);
@@ -302,6 +302,7 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [], r
           date,
           time,
           note,
+          isImmediate: false,
         });
         return; // onCreated navega a /bookings
       }
@@ -337,39 +338,41 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [], r
         setSavingInstant(false);
         return;
       }
-      let slot = findNextAvailableSlot(professional);
-      // ⬇️ Si está "Disponible ahora", usamos hora exacta (sin redondear)
-      if (professional?.isAvailableNow) {
-        const now = new Date();
-        const dateStr = [
-          now.getFullYear(),
-          String(now.getMonth() + 1).padStart(2, "0"),
-          String(now.getDate()).padStart(2, "0"),
-        ].join("-");
-        const hh = String(now.getHours()).padStart(2, "0");
-        const mm = String(now.getMinutes()).padStart(2, "0");
-        slot = { dateStr, timeStr: `${hh}:${mm}` };
+
+      // siempre queremos guardar como “inmediata”, aunque el turno sea de acá a 20 min
+      const slot = findNextAvailableSlot(professional);
+      if (!slot) {
+        setMsg("No encontramos un turno próximo para este profesional.");
+        setSavingInstant(false);
+        return;
       }
 
+      const dateStr = slot.dateStr;
+      const timeStr = slot.timeStr;
+      const defaultNote =
+        note?.trim() ||
+        "📌 Reserva inmediata: el cliente pidió ser atendido lo antes posible. Contactar/confirmar prioridad.";
+
       if (!professional?.depositEnabled) {
-        // 🚫 Sin seña → reserva directa al próximo turno
+        // 🚫 Sin seña → reserva directa al próximo turno, pero marcada como inmediata
         await startDirectBooking({
           professionalId: professional._id,
           serviceId: selected,
-          date: slot.dateStr,
-          time: slot.timeStr,
-          note: note?.trim() || "Reserva inmediata desde modal",
+          date: dateStr,
+          time: timeStr,
+          note: defaultNote,
+          isImmediate: true,
         });
         return;
       }
 
-      // 💳 Con seña → intent de MP
+      // 💳 Con seña → intent de MP, pero marcada como inmediata
       await startIntentCheckout({
         professionalId: professional._id,
         serviceId: selected,
-        date: slot.dateStr,
-        time: slot.timeStr,
-        note: note?.trim() || "Reserva inmediata desde modal",
+        date: dateStr,
+        time: timeStr,
+        note: defaultNote,
         isImmediate: true,
       });
     } catch (e) {
@@ -656,7 +659,14 @@ function DateTimePicker({ date, setDate, time, setTime, professional }) {
             </div>
           </>
         )}
-        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="sr-only" aria-hidden tabIndex={-1} />
+        <input
+          type="time"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+          className="sr-only"
+          aria-hidden
+          tabIndex={-1}
+        />
       </div>
     </>
   );
@@ -719,7 +729,9 @@ export default function ProfessionalDetailPage() {
       }));
       setReviews(arr);
       const hasMore =
-        typeof data?.total === "number" && typeof data?.pages === "number" ? page < data.pages : arrRaw.length === REV_LIMIT;
+        typeof data?.total === "number" && typeof data?.pages === "number"
+          ? page < data.pages
+          : arrRaw.length === REV_LIMIT;
       setRevHasMore(hasMore);
       setRevPage(page);
     } catch {
@@ -744,7 +756,9 @@ export default function ProfessionalDetailPage() {
           setServicesResolved(raw);
         } else if (raw.length) {
           const catalog = await fetchAllServices();
-          const idSet = new Set(raw.map((x) => (typeof x === "string" ? x : x?._id)).filter(Boolean));
+          const idSet = new Set(
+            raw.map((x) => (typeof x === "string" ? x : x?._id)).filter(Boolean)
+          );
           setServicesResolved((catalog || []).filter((svc) => idSet.has(svc._id)));
         } else {
           setServicesResolved([]);
@@ -760,7 +774,12 @@ export default function ProfessionalDetailPage() {
               ? {
                   ...cr,
                   url: absUrl(cr.url),
-                  expired: typeof cr.expired === "boolean" ? cr.expired : cr.expiresAt ? new Date(cr.expiresAt).getTime() < now : false,
+                  expired:
+                    typeof cr.expired === "boolean"
+                      ? cr.expired
+                      : cr.expiresAt
+                      ? new Date(cr.expiresAt).getTime() < now
+                      : false,
                 }
               : null,
             license: lic ? { ...lic, url: absUrl(lic.url) } : null,
@@ -773,7 +792,11 @@ export default function ProfessionalDetailPage() {
           if (cr || lic) {
             setDocsMeta({
               criminalRecord: cr
-                ? { ...cr, url: absUrl(cr.url), expired: cr.expiresAt ? new Date(cr.expiresAt).getTime() < now : false }
+                ? {
+                    ...cr,
+                    url: absUrl(cr.url),
+                    expired: cr.expiresAt ? new Date(cr.expiresAt).getTime() < now : false,
+                  }
                 : null,
               license: lic ? { ...lic, url: absUrl(lic.url) } : null,
             });
@@ -798,7 +821,10 @@ export default function ProfessionalDetailPage() {
     if (search.get("reserve") === "1") setOpenModal(true);
   }, [search]);
 
-  const servicesNames = useMemo(() => (servicesResolved || []).map((s) => s?.name).filter(Boolean), [servicesResolved]);
+  const servicesNames = useMemo(
+    () => (servicesResolved || []).map((s) => s?.name).filter(Boolean),
+    [servicesResolved]
+  );
 
   const filteredReviews = useMemo(() => {
     let arr = [...reviews];
@@ -811,10 +837,18 @@ export default function ProfessionalDetailPage() {
         arr.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         break;
       case "best":
-        arr.sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || new Date(b.createdAt) - new Date(a.createdAt));
+        arr.sort(
+          (a, b) =>
+            Number(b.rating || 0) - Number(a.rating || 0) ||
+            new Date(b.createdAt) - new Date(a.createdAt)
+        );
         break;
       case "worst":
-        arr.sort((a, b) => Number(a.rating || 0) - Number(b.rating || 0) || new Date(b.createdAt) - new Date(a.createdAt));
+        arr.sort(
+          (a, b) =>
+            Number(a.rating || 0) - Number(b.rating || 0) ||
+            new Date(b.createdAt) - new Date(a.createdAt)
+        );
         break;
       case "recent":
       default:
@@ -834,9 +868,18 @@ export default function ProfessionalDetailPage() {
     if (!urls?.length) return;
     setPhotoViewer({ open: true, urls, index });
   }, []);
-  const closeViewer = useCallback(() => setPhotoViewer({ open: false, urls: [], index: 0 }), []);
-  const nextPhoto = useCallback(() => setPhotoViewer((v) => ({ ...v, index: (v.index + 1) % v.urls.length })), []);
-  const prevPhoto = useCallback(() => setPhotoViewer((v) => ({ ...v, index: (v.index - 1 + v.urls.length) % v.urls.length })), []);
+  const closeViewer = useCallback(
+    () => setPhotoViewer({ open: false, urls: [], index: 0 }),
+    []
+  );
+  const nextPhoto = useCallback(
+    () => setPhotoViewer((v) => ({ ...v, index: (v.index + 1) % v.urls.length })),
+    []
+  );
+  const prevPhoto = useCallback(
+    () => setPhotoViewer((v) => ({ ...v, index: (v.index - 1 + v.urls.length) % v.urls.length })),
+    []
+  );
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -896,8 +939,12 @@ export default function ProfessionalDetailPage() {
                 <p className="text-sm text-gray-600">{email}</p>
 
                 <div className="mt-1 flex items-center gap-2">
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⭐ {avg.toFixed(1)}</div>
-                  <span className="text-xs text-gray-600">({count} reseña{count === 1 ? "" : "s"})</span>
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                    ⭐ {avg.toFixed(1)}
+                  </div>
+                  <span className="text-xs text-gray-600">
+                    ({count} reseña{count === 1 ? "" : "s"})
+                  </span>
                 </div>
 
                 <ServicesChips servicesNames={servicesNames} loadingServices={loadingServices} />
@@ -905,9 +952,13 @@ export default function ProfessionalDetailPage() {
 
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 {pro.isAvailableNow ? (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200 border">Disponible ahora</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200 border">
+                    Disponible ahora
+                  </span>
                 ) : (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-700 border border-gray-200">Offline</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-700 border border-gray-200">
+                    Offline
+                  </span>
                 )}
 
                 <DepositBadge enabled={!!pro?.depositEnabled} amount={pro?.depositAmount} />
@@ -1009,27 +1060,56 @@ export default function ProfessionalDetailPage() {
             </div>
 
             <div className="h-[70vh]">
-            <iframe
-              key={pdfOpen.url}
-              src={pdfOpen.url}
-              title="Documento"
-              className="w-full h-full"
-              allow="fullscreen"
-            />
+              <iframe
+                key={pdfOpen.url}
+                src={pdfOpen.url}
+                title="Documento"
+                className="w-full h-full"
+                allow="fullscreen"
+              />
             </div>
           </div>
         </div>
       )}
 
       {photoViewer.open && (
-        <div className="fixed inset-0 z-[60] bg-black/80 grid place-items-center p-3 sm:p-4" role="dialog" aria-modal="true" aria-label="Imágenes">
+        <div
+          className="fixed inset-0 z-[60] bg-black/80 grid place-items-center p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Imágenes"
+        >
           <div className="relative w-full max-w-4xl">
-            <button onClick={closeViewer} className="absolute -top-10 right-0 text-white/90 hover:text-white text-2xl" aria-label="Cerrar" title="Cerrar">✕</button>
+            <button
+              onClick={closeViewer}
+              className="absolute -top-10 right-0 text-white/90 hover:text-white text-2xl"
+              aria-label="Cerrar"
+              title="Cerrar"
+            >
+              ✕
+            </button>
             <div className="relative bg-black rounded-xl overflow-hidden">
-              <button onClick={prevPhoto} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 rounded-full p-2" aria-label="Anterior" title="Anterior">←</button>
-              <button onClick={nextPhoto} className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 rounded-full p-2" aria-label="Siguiente" title="Siguiente">→</button>
+              <button
+                onClick={prevPhoto}
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 rounded-full p-2"
+                aria-label="Anterior"
+                title="Anterior"
+              >
+                ←
+              </button>
+              <button
+                onClick={nextPhoto}
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 rounded-full p-2"
+                aria-label="Siguiente"
+                title="Siguiente"
+              >
+                →
+              </button>
               {/* eslint-disable-next-line jsx-a11y/alt-text */}
-              <img src={photoViewer.urls[photoViewer.index]} className="w-full max-h-[80vh] sm:max-h-[75vh] object-contain bg-black" />
+              <img
+                src={photoViewer.urls[photoViewer.index]}
+                className="w-full max-h-[80vh] sm:max-h-[75vh] object-contain bg-black"
+              />
             </div>
             {photoViewer.urls.length > 1 && (
               <div className="mt-3 flex gap-2 overflow-x-auto">
@@ -1037,7 +1117,9 @@ export default function ProfessionalDetailPage() {
                   <button
                     key={i}
                     onClick={() => setPhotoViewer((v) => ({ ...v, index: i }))}
-                    className={`w-20 h-20 rounded border overflow-hidden ${i === photoViewer.index ? "ring-2 ring-white" : "opacity-80 hover:opacity-100"}`}
+                    className={`w-20 h-20 rounded border overflow-hidden ${
+                      i === photoViewer.index ? "ring-2 ring-white" : "opacity-80 hover:opacity-100"
+                    }`}
                     title={`Imagen ${i + 1}`}
                   >
                     {/* eslint-disable-next-line jsx-a11y/alt-text */}
@@ -1063,7 +1145,10 @@ function ServicesChips({ servicesNames, loadingServices }) {
       )}
       {!loadingServices &&
         servicesNames.slice(0, 5).map((n, i) => (
-          <span key={i} className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+          <span
+            key={i}
+            className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200"
+          >
             {n}
           </span>
         ))}
@@ -1081,14 +1166,92 @@ function ServicesChips({ servicesNames, loadingServices }) {
   );
 }
 
-function Documents({ docsMeta, setPdfOpen }) { return ( <div className="mt-6"> <h2 className="font-semibold mb-2">Documentos</h2> <div className="flex items-center justify-between p-3 border rounded-xl mb-3"> <div> <div className="font-medium">Certificado de antecedentes</div> <div className="text-sm text-gray-600"> {docsMeta?.criminalRecord?.url ? ( docsMeta.criminalRecord.expired ? ( <span className="text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded text-xs">Vencido</span> ) : ( <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-xs">Vigente</span> ) ) : ( <span className="text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-xs">No cargado</span> )} {docsMeta?.criminalRecord?.expiresAt && ( <span className="ml-2 text-xs text-gray-500"> Vence: {new Date(docsMeta.criminalRecord.expiresAt).toLocaleDateString()} </span> )} </div> </div> {docsMeta?.criminalRecord?.url && ( <button className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50 cursor-pointer" onClick={() => setPdfOpen({ url: docsMeta.criminalRecord.url, open: true })} > Ver documento </button> )} </div> <div className="flex items-center justify-between p-3 border rounded-xl"> <div> <div className="font-medium">Matrícula / Credencial</div> <div className="text-sm text-gray-600"> {docsMeta?.license?.url ? ( <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-xs">Cargada</span> ) : ( <span className="text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-xs">No cargada</span> )} </div> </div> {docsMeta?.license?.url && ( <button className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50 cursor-pointer" onClick={() => setPdfOpen({ url: docsMeta.license.url, open: true })} > Ver documento </button> )} </div> </div> ); }
+function Documents({ docsMeta, setPdfOpen }) {
+  return (
+    <div className="mt-6">
+      <h2 className="font-semibold mb-2">Documentos</h2>
+      <div className="flex items-center justify-between p-3 border rounded-xl mb-3">
+        <div>
+          <div className="font-medium">Certificado de antecedentes</div>
+          <div className="text-sm text-gray-600">
+            {docsMeta?.criminalRecord?.url ? (
+              docsMeta.criminalRecord.expired ? (
+                <span className="text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded text-xs">
+                  Vencido
+                </span>
+              ) : (
+                <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-xs">
+                  Vigente
+                </span>
+              )
+            ) : (
+              <span className="text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-xs">
+                No cargado
+              </span>
+            )}
+            {docsMeta?.criminalRecord?.expiresAt && (
+              <span className="ml-2 text-xs text-gray-500">
+                Vence: {new Date(docsMeta.criminalRecord.expiresAt).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+        </div>
+        {docsMeta?.criminalRecord?.url && (
+          <button
+            className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50 cursor-pointer"
+            onClick={() => setPdfOpen({ url: docsMeta.criminalRecord.url, open: true })}
+          >
+            Ver documento
+          </button>
+        )}
+      </div>
+      <div className="flex items-center justify-between p-3 border rounded-xl">
+        <div>
+          <div className="font-medium">Matrícula / Credencial</div>
+          <div className="text-sm text-gray-600">
+            {docsMeta?.license?.url ? (
+              <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-xs">
+                Cargada
+              </span>
+            ) : (
+              <span className="text-gray-700 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded text-xs">
+                No cargada
+              </span>
+            )}
+          </div>
+        </div>
+        {docsMeta?.license?.url && (
+          <button
+            className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50 cursor-pointer"
+            onClick={() => setPdfOpen({ url: docsMeta.license.url, open: true })}
+          >
+            Ver documento
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ReviewsBlock(props) {
   const {
-    avg, count, loadingReviews, filteredReviews, fetchReviews,
-    revPage, revHasMore, revSort, setRevSort,
-    revMinStars, setRevMinStars, revOnlyPhotos, setRevOnlyPhotos,
-    revOnlyComment, setRevOnlyComment, resetFilters, openViewer
+    avg,
+    count,
+    loadingReviews,
+    filteredReviews,
+    fetchReviews,
+    revPage,
+    revHasMore,
+    revSort,
+    setRevSort,
+    revMinStars,
+    setRevMinStars,
+    revOnlyPhotos,
+    setRevOnlyPhotos,
+    revOnlyComment,
+    setRevOnlyComment,
+    resetFilters,
+    openViewer,
   } = props;
 
   return (
@@ -1106,14 +1269,24 @@ function ReviewsBlock(props) {
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <select value={revSort} onChange={(e) => setRevSort(e.target.value)} className="px-2 py-1.5 rounded border bg-white text-sm cursor-pointer" title="Ordenar">
+        <select
+          value={revSort}
+          onChange={(e) => setRevSort(e.target.value)}
+          className="px-2 py-1.5 rounded border bg-white text-sm cursor-pointer"
+          title="Ordenar"
+        >
           <option value="recent">Más recientes</option>
           <option value="oldest">Más antiguas</option>
           <option value="best">Mejor calificación</option>
           <option value="worst">Peor calificación</option>
         </select>
 
-        <select value={revMinStars} onChange={(e) => setRevMinStars(Number(e.target.value))} className="px-2 py-1.5 rounded border bg-white text-sm cursor-pointer" title="Mínimo de estrellas">
+        <select
+          value={revMinStars}
+          onChange={(e) => setRevMinStars(Number(e.target.value))}
+          className="px-2 py-1.5 rounded border bg-white text-sm cursor-pointer"
+          title="Mínimo de estrellas"
+        >
           <option value={0}>Todas las calificaciones</option>
           <option value={4}>4★ y más</option>
           <option value={3}>3★ y más</option>
@@ -1122,22 +1295,34 @@ function ReviewsBlock(props) {
         </select>
 
         <label className="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={revOnlyPhotos} onChange={(e) => setRevOnlyPhotos(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={revOnlyPhotos}
+            onChange={(e) => setRevOnlyPhotos(e.target.checked)}
+          />
           <span>Con fotos</span>
         </label>
 
         <label className="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={revOnlyComment} onChange={(e) => setRevOnlyComment(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={revOnlyComment}
+            onChange={(e) => setRevOnlyComment(e.target.checked)}
+          />
           <span>Con comentario</span>
         </label>
 
-        <button onClick={resetFilters} className="text-sm text-indigo-700 hover:underline ml-auto">Restablecer</button>
+        <button onClick={resetFilters} className="text-sm text-indigo-700 hover:underline ml-auto">
+          Restablecer
+        </button>
       </div>
 
       {loadingReviews ? (
         <div className="text-gray-600 text-sm">Cargando reseñas…</div>
       ) : filteredReviews.length === 0 ? (
-        <div className="border rounded-xl p-4 bg-white text-sm text-gray-600">No hay reseñas que coincidan con el filtro actual.</div>
+        <div className="border rounded-xl p-4 bg-white text-sm text-gray-600">
+          No hay reseñas que coincidan con el filtro actual.
+        </div>
       ) : (
         <div className="space-y-3">
           {filteredReviews.map((r) => {
@@ -1147,7 +1332,9 @@ function ReviewsBlock(props) {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="font-medium text-sm">{r?.user?.name || "Cliente"}</div>
-                    <div className="text-xs text-gray-500">{r?.createdAt ? new Date(r.createdAt).toLocaleDateString() : ""}</div>
+                    <div className="text-xs text-gray-500">
+                      {r?.createdAt ? new Date(r.createdAt).toLocaleDateString() : ""}
+                    </div>
                   </div>
                   <div className="shrink-0">
                     <div className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
@@ -1170,13 +1357,20 @@ function ReviewsBlock(props) {
                           title="Ver foto"
                         >
                           {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                          <img src={u} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          <img
+                            src={u}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
                           <span className="absolute inset-0 bg-black/0 group-hover:bg-black/10" />
                         </button>
                       ))}
                     </div>
                     {photoUrls.length > 6 && (
-                      <button type="button" onClick={() => openViewer(photoUrls, 6)} className="mt-1 text-xs text-indigo-700 hover:underline">
+                      <button
+                        type="button"
+                        onClick={() => openViewer(photoUrls, 6)}
+                        className="mt-1 text-xs text-indigo-700 hover:underline"
+                      >
                         Ver {photoUrls.length - 6} más
                       </button>
                     )}
@@ -1190,7 +1384,9 @@ function ReviewsBlock(props) {
             <button
               onClick={() => fetchReviews(Math.max(1, revPage - 1))}
               disabled={revPage <= 1}
-              className={`px-3 py-1 rounded border ${revPage <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
+              className={`px-3 py-1 rounded border ${
+                revPage <= 1 ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
+              }`}
             >
               ←
             </button>
@@ -1198,7 +1394,9 @@ function ReviewsBlock(props) {
             <button
               onClick={() => fetchReviews(revPage + 1)}
               disabled={!revHasMore}
-              className={`px-3 py-1 rounded border ${!revHasMore ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"}`}
+              className={`px-3 py-1 rounded border ${
+                !revHasMore ? "opacity-40 cursor-not-allowed" : "bg-white hover:bg-gray-100"
+              }`}
             >
               →
             </button>
