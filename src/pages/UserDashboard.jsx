@@ -69,6 +69,35 @@ function normalizeProLoc(p) {
 
 const isValidLinkedinUrl = (u = "") => /^https?:\/\/(www\.)?linkedin\.com\/.+/i.test(String(u || "").trim());
 
+function hasVisibleWhatsapp(p) {
+  let visible = false;
+  if (p?.whatsapp && typeof p.whatsapp === "object") {
+    visible = !!p.whatsapp.visible;
+  } else if (p?.user?.whatsapp && typeof p.user.whatsapp === "object") {
+    visible = !!p.user.whatsapp.visible;
+  }
+
+  const userWa = p?.user?.whatsapp;
+  const userWaNum =
+    typeof userWa === "string"
+      ? userWa
+      : userWa && typeof userWa === "object"
+      ? userWa.number
+      : "";
+
+  const rawWa =
+    p?.whatsapp?.number ||
+    userWaNum ||
+    p?.user?.phone ||
+    p?.user?.contactPhone ||
+    "";
+
+  const waDigits = String(rawWa || "").replace(/\D/g, "");
+
+  return Boolean(visible && waDigits.length >= 7);
+}
+
+
 // LinkedIn badge
 function LinkedInBadge({ url, className = "" }) {
   const ok = isValidLinkedinUrl(url);
@@ -739,6 +768,15 @@ function UserDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allResults, livePositions, filterBarValues, radiusKm, origin?.lat, origin?.lng]);
 
+  const getProRating = (p) => Number(p?.averageRating ?? p?.rating ?? 0);
+
+  const getRelevance = (p) => {
+  const rating = getProRating(p);
+  const dist = Number.isFinite(p?._distanceKm) ? p._distanceKm : Infinity;
+  return { rating, dist };
+};
+
+
   // aplicar filtros visuales
   function applyVisualFilters(base) {
     const v = filterBarValues;
@@ -774,11 +812,8 @@ function UserDashboard() {
       });
     }
     if (v.whatsapp) {
-      arr = arr.filter((p) => {
-        const w = p?.contact?.whatsapp || p?.user?.whatsapp || p?.whatsapp || "";
-        return String(w).trim().length >= 7;
-      });
-    }
+  arr = arr.filter((p) => hasVisibleWhatsapp(p));
+}
     if (v.deposit) {
       arr = arr.filter((p) => !!p?.depositEnabled);
     }
@@ -796,8 +831,9 @@ function UserDashboard() {
         return true;
       });
     }
+    
     if (Number(v.minRating) > 0) {
-      arr = arr.filter((p) => Number(p?.averageRating || 0) >= Number(v.minRating));
+      arr = arr.filter((p) => getProRating(p) >= Number(v.minRating));
     }
 
     if (v.sort === "distance") {
@@ -807,8 +843,18 @@ function UserDashboard() {
         return da - db;
       });
     } else if (v.sort === "rating") {
-      arr.sort((a, b) => Number(b?.averageRating || 0) - Number(a?.averageRating || 0));
+      arr.sort((a, b) => getProRating(b) - getProRating(a));
+    } else if (v.sort === "relevance") {
+      // rating DESC y, si empatan, distancia ASC
+      arr.sort((a, b) => {
+        const ra = getProRating(b) - getProRating(a);
+        if (ra !== 0) return ra;
+        const da = a._distanceKm ?? Infinity;
+        const db = b._distanceKm ?? Infinity;
+        return da - db;
+      });
     }
+
 
     setVisResults(arr);
     setTotal(arr.length);

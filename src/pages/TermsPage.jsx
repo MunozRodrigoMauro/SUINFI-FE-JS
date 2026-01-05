@@ -369,7 +369,7 @@ export default function TermsPage() {
           <div className="mt-4">
             <button
               onClick={() => setAll(!allOpen)}
-              className="rounded-lg bg-[#0a0e17] px-3 py-1.5 text-sm font-semibold text-white hover:bg-black active:opacity-90 transition"
+              className="rounded-lg bg-[#0a0e17] px-3 py-1.5 text-sm font-semibold text-white hover:bg-black active:opacity-90 transition cursor-pointer"
             >
               {allOpen ? "Colapsar todo" : "Expandir todo"}
             </button>
@@ -389,7 +389,7 @@ export default function TermsPage() {
                 <button
                   onClick={() => toggle(s.id)}
                   aria-expanded={isOpen}
-                  className={`group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition
+                  className={`group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition cursor-pointer
                     ${isOpen
                       ? "bg-[#0a0e17] text-white hover:bg-black"
                       : "bg-[#0a0e17]/5 hover:bg-[#0a0e17]/10 text-[#0a0e17]"}

@@ -1,4 +1,3 @@
-// src/auth/AuthContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { loginUser, verifyToken, getMyProfile } from "../api/userService";
@@ -37,6 +36,8 @@ function needsOnboarding(user) {
 }
 
 // CHANGES: helper central para estado de perfil (cliente/profesional)
+// AHORA: NO se considera más "whatsapp" como faltante.
+// Sólo se usa nombre + dirección básica y, opcionalmente, disponibilidad.
 function computeProfileStatus(user) {
   const missing = [];
   if (!user) return { isComplete: false, missing, role: null };
@@ -45,24 +46,34 @@ function computeProfileStatus(user) {
   const nameOk = (user.name || "").trim().length >= 2;
 
   const a = user.address || {};
+  // Dirección básica: sin exigir label/location
   const addrOk =
-    (a.label && a.label.trim().length > 0) &&
-    typeof a.location?.lat === "number" &&
-    typeof a.location?.lng === "number";
+    !!(a.country && a.country.trim()) &&
+    !!(a.state && a.state.trim()) &&
+    !!(a.city && a.city.trim()) &&
+    !!(a.street && a.street.trim()) &&
+    !!(a.number && String(a.number).trim()) &&
+    !!(a.postalCode && String(a.postalCode).trim());
 
   if (!nameOk) missing.push("name");
   if (!addrOk) missing.push("address");
 
   if (role === "professional") {
-    const whatsappOk = Boolean((user.whatsapp?.number || "").trim());
-    if (!whatsappOk) missing.push("whatsapp");
+    // OPCIONAL: sólo marcamos disponibilidad si el backend la trae explícita y vacía
+    const av = user.availability;
+    if (av !== undefined && av !== null) {
+      const availabilityOk =
+        Boolean(av.weekly) ||
+        (Array.isArray(av.blocks) && av.blocks.length > 0);
+      if (!availabilityOk) {
+        missing.push("availability");
+      }
+    }
 
-    // disponibilidad programada: bandera mínima
-    const availabilityOk = Boolean(user.availability?.weekly || user.availability?.blocks?.length);
-    if (!availabilityOk) missing.push("availability");
+    // ⚠️ IMPORTANTE: WhatsApp YA NO se chequea acá.
+    // El popup nunca va a mostrar "WhatsApp" como pendiente.
   }
 
-  // Cliente: WhatsApp NO obligatorio, por consigna
   const isComplete = missing.length === 0;
   return { isComplete, missing, role };
 }
@@ -155,12 +166,8 @@ export function AuthProvider({ children }) {
       }
       try {
         const vr = await verifyToken(token); // { user }
-        let u = vr?.user || null;
-
-        if (!u?.avatarUrl || isEmpty(u.avatarUrl)) {
-          u = await hydrateUserAfterAuth(token, u || {});
-        }
-
+        const base = vr?.user || {};
+        const u = await hydrateUserAfterAuth(token, base);
         setUser(u);
 
         // socket + tracking

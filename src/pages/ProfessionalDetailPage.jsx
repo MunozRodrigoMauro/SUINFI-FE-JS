@@ -146,6 +146,7 @@ const formatLocalDate = (yyyyMmDd) => {
 
 
 function ReserveModal({ open, onClose, professional, onCreated, services = [], returnFocusRef }) {
+  const MAX_NOTE_LENGTH = 150;
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
@@ -511,17 +512,37 @@ function ReserveModal({ open, onClose, professional, onCreated, services = [], r
                 />
               </div>
   
-              {/* Nota */}
-              <div>
-                <label className="block text-sm font-medium mb-1">Nota (opcional)</label>
-                <textarea
-                  rows={3}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 resize-none"
-                  placeholder="Contanos brevemente qué necesitás…"
-                />
+            {/* Nota */}
+            <div>
+              <label className="block text-sm font-medium mb-1">Nota (opcional)</label>
+              <textarea
+                rows={3}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 resize-none"
+                placeholder="Contanos brevemente qué necesitás…"
+                maxLength={MAX_NOTE_LENGTH}
+              />
+
+              <div className="mt-1 flex items-center justify-between text-xs">
+                <span
+                  className={
+                    note.length >= MAX_NOTE_LENGTH
+                      ? "text-red-600"
+                      : "text-gray-500"
+                  }
+                >
+                  {note.length}/{MAX_NOTE_LENGTH} caracteres
+                </span>
+
+                {note.length >= MAX_NOTE_LENGTH && (
+                  <span className="text-red-600">
+                    Llegaste al máximo permitido.
+                  </span>
+                )}
               </div>
+            </div>
+
   
               {/* Acciones */}
               <div className="flex flex-wrap items-center justify-end gap-2 pt-1">

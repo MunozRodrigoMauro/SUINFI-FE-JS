@@ -28,11 +28,12 @@ function HeroSection() {
     <section
       className="
         relative overflow-hidden supports-[overflow:clip]:overflow-clip
-        /* 🛠 Cambio: más espacio en móvil (arriba y abajo) */
+        /* 🛠 Cambio: más espacio en móvil para compensar navbar fija */
         pt-[calc(env(safe-area-inset-top)+92px)] md:pt-0
-        pb-8 md:pb-0
-        /* Desktop/Tablet: mantenemos min-height para el look grande */
-        md:min-h-[50vh] lg:min-h-[56vh]
+        pb-12 md:pb-0
+        /* Desktop/Tablet: altura completa para impacto visual */
+        md:h-screen md:min-h-[600px]
+        flex flex-col justify-center
       "
     >
       {/* Fondo base */}
@@ -53,46 +54,70 @@ function HeroSection() {
         <source src="/videos/VIDEOSUINFI.mp4" type="video/mp4" />
       </video>
 
-      {/* Oscurecimiento para legibilidad */}
-      <div className="absolute inset-0 bg-black/70 md:bg-black/70" />
+      {/* Oscurecimiento general para que el video no compita con el texto */}
+      <div className="absolute inset-0 bg-black/50" />
 
-      {/* Contenido */}
-      <div className="relative z-10 text-white px-4">
-        <div
+      {/* Contenido Principal */}
+      <div className="relative z-10 w-full px-4 md:px-6 flex flex-col items-center justify-center h-full">
+        
+        {/* ⭐ TARJETA GLASSMORPHISM (SOLUCIÓN):
+            - En móvil (default): w-full.
+            - En Desktop (md/lg): max-w-3xl (limita el ancho para que parezca tarjeta).
+            - bg-black/30: Fondo oscuro traslúcido para mayor legibilidad.
+        */}
+        <div 
           className="
-            mx-auto w-full max-w-screen-xl
-            /* En móvil: contenido define el alto; en md+ centramos vertical */
-            flex flex-col items-center justify-start md:justify-center
-            gap-5 md:gap-6 /* 🛠 Cambio: un poco más de separación interna */
-            md:min-h-[50vh] lg:min-h-[56vh]
+            w-full md:max-w-3xl lg:max-w-4xl
+            mx-auto
+            flex flex-col items-center text-center
+            backdrop-blur-md 
+            bg-black/30 md:bg-black/40 /* Un poco más oscuro en desktop para contraste */
+            border border-white/10 
+            shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]
+            rounded-3xl
+            p-6 md:p-12 lg:p-14
+            transition-all duration-300
           "
         >
-          {/* Título */}
+          
+          {/* Badge "Bienvenido" */}
+          <span className="mb-4 inline-block text-emerald-400 font-bold tracking-[0.2em] uppercase text-xs md:text-sm animate-pulse">
+            Bienvenido a CuyIT
+          </span>
+
+          {/* Título Principal */}
           <h1
             className="
-              font-extrabold text-center
-              leading-[1.12] tracking-[-0.02em]
-              max-w-2xl md:max-w-3xl lg:max-w-4xl
-              text-[clamp(1.55rem,6vw,2.3rem)]
-              md:text-[clamp(2.25rem,4.2vw,3.75rem)]
+              font-extrabold text-white
+              leading-tight tracking-tight
+              mb-6
+              text-3xl sm:text-4xl md:text-5xl lg:text-6xl
+              drop-shadow-lg
             "
           >
-            Conectá con servicios y profesionales en tiempo real
+            La plataforma que conecta servicios y profesionales en tiempo real
           </h1>
+          
+          {/* Subtítulo */}
+          <p className="max-w-2xl mx-auto text-base md:text-xl text-gray-200 font-light leading-relaxed mb-8 md:mb-10">
+            Olvidate de las esperas. En <strong>CuyIT</strong> encontrás expertos verificados cerca de tu ubicación al instante. Soluciones rápidas, seguras y a un clic.
+          </p>
 
-          {/* CTA */}
-          <div className="mt-4 md:mt-6 lg:mt-8 flex items-center justify-center">
+          {/* CTA Botón */}
+          <div>
             <Link
               to={ctaLink}
               className="
                 btn-breathe
-                bg-gradient-to-r from-emerald-600 to-teal-700
+                inline-flex items-center justify-center
+                bg-gradient-to-r from-emerald-600 to-teal-600
                 text-white font-bold
-                px-6 py-3 md:px-7 md:py-4
-                rounded-full shadow-lg hover:scale-110 hover:shadow-xl
-                transition-transform duration-300
-                text-base md:text-xl lg:text-2xl
-                focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70
+                px-8 py-4 md:px-10 md:py-4
+                rounded-full 
+                shadow-lg shadow-emerald-900/20
+                hover:scale-105 hover:shadow-emerald-500/30
+                transition-all duration-300
+                text-lg md:text-xl
               "
             >
               {ctaText}
@@ -105,16 +130,14 @@ function HeroSection() {
       <style>{`
         @keyframes breathe {
           0%, 100% {
-            transform: translateY(0) scale(1);
-            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.35);
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
           }
           50% {
-            transform: translateY(-2px) scale(1.05);
             box-shadow: 0 0 0 12px rgba(16, 185, 129, 0);
           }
         }
         .btn-breathe {
-          animation: breathe 3s ease-in-out infinite;
+          animation: breathe 3s infinite;
         }
       `}</style>
     </section>

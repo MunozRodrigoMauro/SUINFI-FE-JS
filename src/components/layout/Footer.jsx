@@ -142,17 +142,27 @@ const handleInicioClick = (e) => {
             >
               <div className="flex space-x-4 pl-2 py-3">
                 <a
-                  href="https://www.instagram.com/__cuyit__/"
+                  href="https://www.instagram.com/cuyit.app/"
                   className="text-gray-400 hover:text-white text-xl"
                   target="_blank"
                   rel="noreferrer"
                 >
                   <FaInstagram />
                 </a>
-                <a href="#" className="text-gray-400 hover:text-white text-xl pointer-events-none opacity-50 cursor-not-allowed" target="_blank" rel="noreferrer" >
+                <a 
+                  href="https://www.facebook.com/profile.php?id=61584119542556" 
+                  className="text-gray-400 hover:text-white text-xl" 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  >
                   <FaFacebook />
                 </a>
-                <a href="#" className="text-gray-400 hover:text-white text-xl pointer-events-none opacity-50 cursor-not-allowed" target="_blank" rel="noreferrer" >
+                <a 
+                  href="https://www.linkedin.com/company/cuyit/" 
+                  className="text-gray-400 hover:text-white text-xl" 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  >
                   <FaLinkedin />
                 </a>
               </div>
@@ -231,7 +241,7 @@ const handleInicioClick = (e) => {
               <h4 className="text-white font-semibold mb-4">Síguenos</h4>
               <div className="flex space-x-4">
                 <a
-                  href="https://www.instagram.com/__cuyit__/"
+                  href="https://www.instagram.com/cuyit.app/"
                   className="text-gray-400 hover:text-white text-xl"
                   target="_blank"
                   rel="noreferrer"

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 
 const K = "cuyit:nudge:v1";
 const DURATION_MS = 24 * 60 * 60 * 1000; // 24h
@@ -30,17 +31,82 @@ function useDismiss() {
   return { canShow, rememberLater, clearNudge };
 }
 
+// 🔵 MISMA LÓGICA QUE EN AuthContext.computeProfileStatus
+function computeProfileStatusLocal(user) {
+  const missing = [];
+  if (!user) return { isComplete: false, missing, role: null };
+
+  const role = user.role || "user";
+  const nameOk = (user.name || "").trim().length >= 2;
+
+  const a = user.address || {};
+  const addrOk =
+    (a.label && a.label.trim().length > 0) &&
+    typeof a.location?.lat === "number" &&
+    typeof a.location?.lng === "number";
+
+  if (!nameOk) missing.push("name");
+  if (!addrOk) missing.push("address");
+
+  if (role === "professional") {
+    const whatsappOk =
+      Boolean((user.whatsapp?.number || "").trim()) ||
+      Boolean(user.proWhatsappOk);
+
+    if (!whatsappOk) missing.push("whatsapp");
+
+    const availabilityOk =
+      Boolean(user.availability?.weekly || user.availability?.blocks?.length) ||
+      Boolean(user.proAvailabilityOk);
+
+    if (!availabilityOk) missing.push("availability");
+  }
+
+  const isComplete = missing.length === 0;
+  return { isComplete, missing, role };
+}
+
 export default function ProfileNudge({ user, missing = [], onClose }) {
   const navigate = useNavigate();
   const { canShow, rememberLater } = useDismiss();
   const [open, setOpen] = useState(false);
   const overlayRef = useRef(null);
 
-  // Mostrar solo si faltan mínimos y el usuario no snoozeó
+  // 🟢 Tomamos user/profileStatus desde el contexto
+  const { user: ctxUser, profileStatus: ctxProfileStatus } = useAuth();
+
+  // Usuario base: el del contexto primero; si no, el prop
+  const baseUser = ctxUser || user || null;
+
+  // Estado de perfil calculado localmente (misma lógica que AuthContext)
+  const localStatus = React.useMemo(
+    () => computeProfileStatusLocal(baseUser),
+    [baseUser]
+  );
+
+  // Preferimos el profileStatus del contexto; si no existe, usamos localStatus
+  const status = ctxProfileStatus || localStatus;
+
+  const effectiveMissing = React.useMemo(() => {
+    if (status && Array.isArray(status.missing)) {
+      return status.missing;
+    }
+    return Array.isArray(missing) ? missing : [];
+  }, [status, missing]);
+
+  const isComplete = Boolean(status?.isComplete);
+
+  // Mostrar solo si NO está completo, faltan mínimos y el usuario no snoozeó
   useEffect(() => {
-    const hasMissing = Array.isArray(missing) && missing.length > 0;
-    setOpen(Boolean(user && hasMissing && canShow));
-  }, [user, missing, canShow]);
+    if (!canShow || isComplete) {
+      setOpen(false);
+      return;
+    }
+    const hasMissing =
+      Array.isArray(effectiveMissing) && effectiveMissing.length > 0;
+    const hasUserOrRole = Boolean(baseUser || status?.role);
+    setOpen(Boolean(hasUserOrRole && hasMissing && canShow && !isComplete));
+  }, [canShow, isComplete, effectiveMissing, baseUser, status?.role]);
 
   // Cerrar por ESC
   useEffect(() => {
@@ -57,9 +123,10 @@ export default function ProfileNudge({ user, missing = [], onClose }) {
     return () => (document.body.style.overflow = prev);
   }, [open]);
 
-  if (!open) return null;
+  // Si el perfil está completo o no corresponde mostrar → nada
+  if (!open || isComplete) return null;
 
-  const role = user?.role || "user";
+  const role = status?.role || baseUser?.role || "user";
   const title =
     role === "professional"
       ? "Completá tu perfil para recibir más trabajos"
@@ -102,27 +169,26 @@ export default function ProfileNudge({ user, missing = [], onClose }) {
           <h3 className="text-[15px] sm:text-lg font-semibold tracking-tight text-slate-900 flex-1">
             {title}
           </h3>
-<button
-  aria-label="Cerrar"
-  title="Cerrar"
-  onClick={snooze}
-  className="group h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-white/90 border border-slate-200 shadow-md grid place-items-center
+          <button
+            aria-label="Cerrar"
+            title="Cerrar"
+            onClick={snooze}
+            className="group h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-white/90 border border-slate-200 shadow-md grid place-items-center
              hover:bg-white hover:border-slate-300 hover:shadow-lg active:scale-[.98] cursor-pointer transition"
->
-  <svg
-    viewBox="0 0 24 24"
-    aria-hidden="true"
-    className="h-5 w-5 sm:h-6 sm:w-6 text-slate-700 transition-colors group-hover:text-slate-900"
-  >
-    <path
-      d="M6.75 6.75l10.5 10.5M17.25 6.75l-10.5 10.5"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-    />
-  </svg>
-</button>
-
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              className="h-5 w-5 sm:h-6 sm:w-6 text-slate-700 transition-colors group-hover:text-slate-900"
+            >
+              <path
+                d="M6.75 6.75l10.5 10.5M17.25 6.75l-10.5 10.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </div>
 
         <p className="text-[13px] sm:text-sm text-slate-600 mt-1 leading-relaxed">
@@ -130,12 +196,13 @@ export default function ProfileNudge({ user, missing = [], onClose }) {
         </p>
 
         <ul className="mt-3 space-y-1.5">
-          {missing.map((k) => (
-            <li key={k} className="flex items-center gap-2 text-[13px] sm:text-sm text-slate-800">
+          {effectiveMissing.map((k) => (
+            <li
+              key={k}
+              className="flex items-center gap-2 text-[13px] sm:text-sm text-slate-800"
+            >
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500/90 ring-2 ring-emerald-100" />
-              <span>
-                {mapLabel[k] || k}
-              </span>
+              <span>{mapLabel[k] || k}</span>
             </li>
           ))}
         </ul>

@@ -17,7 +17,7 @@ import ChatDock from "../components/chat/ChatDock";
 import ProfileNudge from "../components/Shared/ProfileNudge"; // CHANGES
 
 function ProfessionalDashboard() {
-  const { user, profileStatus } = useAuth(); // CHANGES
+  const { user } = useAuth(); // CHANGES
   const navigate = useNavigate();
 
   const [isAvailableNow, setIsAvailableNow] = useState(false);
@@ -243,9 +243,8 @@ function ProfessionalDashboard() {
   return (
     <section className="min-h-screen bg-white text-[#0a0e17] py-24 px-4">
       {/* CHANGES: PopApp si faltan mínimos */}
-      {user && !profileStatus?.isComplete && (
-        <ProfileNudge user={user} missing={profileStatus?.missing || []} />
-      )}
+{user && <ProfileNudge user={user} />}
+
 
       <div className="max-w-6xl mx-auto">
         {/* Header */}

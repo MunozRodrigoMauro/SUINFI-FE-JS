@@ -1,25 +1,27 @@
+// src/components/home/HowItWorksSection.jsx
 import React, { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { LuMapPin, LuClock, LuShieldCheck } from "react-icons/lu";
+import { LuMapPin, LuClock, LuShieldCheck, LuSmartphone, LuSparkles } from "react-icons/lu";
 // 🟢 CAMBIO: necesitamos location para leer state.focusSection cuando venimos redirigidos desde otra página
 import { useLocation } from "react-router-dom";
 
 /* ======== contenido ======== */
+// ⭐ SEO: Textos optimizados para posicionar CuyIT como solución tecnológica y no burocrática.
 const steps = [
   {
-    icon: <LuMapPin className="w-12 h-12" />,
-    title: "Geolocalización inteligente",
-    desc: "Encontrá al profesional más cercano según dónde esté en este momento. Como pedir un UBER, pero con profesionales de cualquier área.",
+    icon: <LuMapPin className="w-10 h-10 md:w-12 md:h-12" />,
+    title: "Geolocalización CuyIT",
+    desc: "Nuestro algoritmo encuentra al profesional verificado más cercano a tu ubicación exacta. CuyIT funciona como un radar de servicios en tiempo real.",
   },
   {
-    icon: <LuClock className="w-12 h-12" />,
-    title: "Disponibilidad en tiempo real",
-    desc: "Ves quién está libre ahora mismo. Hace la reserva inmediata y recibí ayuda al instante, sin esperar turnos.",
+    icon: <LuClock className="w-10 h-10 md:w-12 md:h-12" />,
+    title: "Reserva Instantánea",
+    desc: "Sin llamadas interminables. En CuyIT ves quién está libre ahora mismo, reservás y recibís ayuda al instante. Priorizamos tu tiempo.",
   },
   {
-    icon: <LuShieldCheck className="w-12 h-12" />,
-    title: "Confianza 24/7",
-    desc: "Perfiles verificados con CV, reseñas, puntuación y precio claro. Disponible las 24 horas.",
+    icon: <LuShieldCheck className="w-10 h-10 md:w-12 md:h-12" />,
+    title: "Seguridad Garantizada",
+    desc: "Perfiles con identidad validada, reseñas reales y precios transparentes. La IA de CuyIT asegura el match perfecto y pagos protegidos.",
   },
 ];
 
@@ -44,7 +46,7 @@ function HowItWorksSection() {
       "shadow-[0_20px_70px_var(--tw-shadow-color)]",
       "transition-shadow",
       "duration-300",
-      "rounded-2xl",
+      "rounded-3xl", // Cambio visual: bordes más redondeados
       "outline-none",
     ];
 
@@ -95,6 +97,7 @@ function HowItWorksSection() {
       e.preventDefault();
       smoothToSection();
       // Actualizar hash sin saltar de golpe
+      // eslint-disable-next-line no-restricted-globals
       history.pushState(null, "", "#aspectos-clave");
     };
     document.addEventListener("click", clickDelegate);
@@ -114,6 +117,7 @@ function HowItWorksSection() {
       setTimeout(() => {
         smoothToSection();
         // sincronizamos el hash para que quede compartible
+        // eslint-disable-next-line no-restricted-globals
         history.replaceState(null, "", "#aspectos-clave");
       }, 80);
     }
@@ -126,13 +130,12 @@ function HowItWorksSection() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location?.state]); // 🟢 CAMBIO: dependemos del state por si se reutiliza el componente
-  // (el resto queda igual)
 
   return (
     <section
       ref={sectionRef}
       id="aspectos-clave"
-      className="relative py-20 bg-gradient-to-b from-gray-50 to-white rounded-2xl scroll-mt-24"
+      className="relative py-24 bg-gradient-to-b from-gray-50 via-white to-gray-50 rounded-3xl scroll-mt-24"
     >
       {/* Ancla legacy para no romper enlaces existentes */}
       <span id="como-funciona" className="absolute -top-24" aria-hidden="true" />
@@ -140,22 +143,44 @@ function HowItWorksSection() {
       {/* Overlay para sombreado/iluminación al focalizar */}
       <div
         ref={overlayRef}
-        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 
-                   bg-emerald-200/20"
+        className="pointer-events-none absolute inset-0 rounded-3xl opacity-0 transition-opacity duration-500 
+                   bg-emerald-100/30 mix-blend-multiply"
       />
 
-      <div className="max-w-6xl mx-auto px-4 text-center">
-        <motion.h2
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center relative z-10">
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           viewport={{ once: true }}
-          className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-14"
         >
-          Aspectos clave
-        </motion.h2>
+            {/* ⭐ SEO: Título explícito de la marca */}
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-black text-gray-900 mb-6 tracking-tight">
+              ¿ Por qué elegir <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">CuyIT</span> ?
+            </h2>
+            <p className="max-w-2xl mx-auto text-lg text-gray-600 mb-8">
+              La evolución de los servicios profesionales. Tecnología, rapidez y confianza en una sola plataforma.
+            </p>
+        </motion.div>
 
-        <ul role="list" className="grid md:grid-cols-3 gap-10">
+        {/* 🟢 CAMBIO: badge destacando que la app móvil de CuyIT viene muy pronto */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          viewport={{ once: true }}
+          className="mx-auto mb-16 inline-flex items-center gap-3 px-6 py-2.5 rounded-full 
+                     bg-gray-900 text-white shadow-xl ring-2 ring-emerald-500/50"
+          aria-label="CuyIT app móvil muy pronto"
+        >
+          <LuSmartphone className="w-5 h-5 text-emerald-400" />
+          <span className="text-sm font-bold tracking-wide uppercase">
+            CuyIT App · Próximamente
+          </span>
+          <LuSparkles className="w-5 h-5 text-yellow-400" />
+        </motion.div>
+
+        <ul role="list" className="grid md:grid-cols-3 gap-8 lg:gap-12">
           {steps.map((step, i) => (
             <motion.li
               role="listitem"
@@ -164,20 +189,31 @@ function HowItWorksSection() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.15, duration: 0.6 }}
               viewport={{ once: true }}
-              whileHover={{ scale: 1.05 }}
-              className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition flex flex-col items-center"
+              whileHover={{ y: -10 }}
+              className="group bg-white rounded-3xl p-8 lg:p-10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)] 
+                         hover:shadow-[0_20px_60px_-15px_rgba(16,185,129,0.15)] 
+                         transition-all duration-300 border border-gray-100 flex flex-col items-center relative overflow-hidden"
             >
+              {/* Decoración de fondo en hover */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-teal-600 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300" />
+              
               <motion.div
                 whileInView={{ rotate: [0, 10, -10, 0] }}
                 transition={{ duration: 1, delay: i * 0.3 }}
-                className="mb-5"
+                className="mb-6 relative"
               >
-                <div className="w-16 h-16 rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 flex items-center justify-center text-white shadow-lg">
+                <div className="absolute inset-0 bg-emerald-200/40 blur-xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center text-emerald-600 shadow-inner group-hover:text-emerald-700 group-hover:scale-110 transition-transform">
                   {step.icon}
                 </div>
               </motion.div>
-              <h3 className="text-xl font-semibold mb-3">{step.title}</h3>
-              <p className="text-gray-600 text-sm">{step.desc}</p>
+              
+              <h3 className="text-2xl font-bold mb-4 text-gray-800 group-hover:text-emerald-700 transition-colors">
+                {step.title}
+              </h3>
+              <p className="text-gray-600 leading-relaxed">
+                {step.desc}
+              </p>
             </motion.li>
           ))}
         </ul>

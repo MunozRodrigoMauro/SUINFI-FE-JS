@@ -1115,6 +1115,14 @@ export default function ProfilePage() {
       console.error("patch whatsapp error", e?.response?.data || e);
     }
 
+    // Marcar en el contexto que el WhatsApp está OK (para que el PopUp deje de aparecer)
+    const logicalWaOk = Boolean(e164 && waVisible && waOk);
+    setUser((prev) => ({
+      ...prev,
+      proWhatsappOk: logicalWaOk,
+    }));
+
+
     setAvatarFile(null);
     setMsgType(waOk ? "success" : "error");
     setMsg(
@@ -1164,6 +1172,13 @@ export default function ProfilePage() {
         }, {})
       );
       await setAvailabilityMode("schedule");
+      // Marcar en el contexto que hay al menos 1 día activo
+      const anyActive = rows.some((r) => r.active);
+      setUser((prev) => ({
+        ...prev,
+        proAvailabilityOk: anyActive,
+      }));
+
       setAgendaMsg("✅ Agenda guardada y modo horario activo.");
       const now = Date.now();
       setSavedAtAgenda(now);
@@ -1359,8 +1374,17 @@ export default function ProfilePage() {
   const isAdmin = role === "admin";
   const isProfessional = role === "professional";
   const hasName = form.name.trim().length >= 2;
-  const hasAddr =
-    !!addr.country && !!addr.state && !!addr.city && !!addr.street && !!addr.number && !!addr.postalCode;
+    const hasAddr =
+    !!addr.country &&
+    !!addr.state &&
+    !!addr.city &&
+    !!addr.street &&
+    !!addr.number &&
+    !!addr.postalCode &&
+    coords &&
+    typeof coords.lat === "number" &&
+    typeof coords.lng === "number";
+
 
   const hasPhoto = !!avatarPreview;
   const waOk = (() => {
