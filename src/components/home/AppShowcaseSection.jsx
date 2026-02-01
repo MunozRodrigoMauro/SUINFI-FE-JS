@@ -14,6 +14,7 @@ import {
   LuBadgeCheck,   // Reemplazo para verificados
   LuSmartphone    // Icono general
 } from "react-icons/lu";
+import webPng from "../../assets/web.png";
 
 /* ⭐ SEO CONFIG:
    Ampliamos el abanico. Google leerá que NO somos solo plomeros.
@@ -146,7 +147,7 @@ function AppShowcaseSection() {
                     Si no tienes una a mano, dejé esta de Unsplash que simula un mapa/perfil.
                 */}
                 <img
-                  src="/src/assets/web.png"
+                  src={webPng}
                   alt="App CuyIT Interfaz"
                   className="object-cover w-full h-full"
                 />

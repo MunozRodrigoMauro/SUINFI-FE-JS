@@ -174,6 +174,17 @@ const SECTIONS = [
           prostitución, ofrecimiento o solicitud de servicios sexuales, contenido erótico explícito,
           explotación sexual o conductas contrarias a la ley y a las buenas costumbres).
         </p>
+
+        <p className="mt-3 text-sm text-rose-900/90">
+          <b>PROHIBICIÓN ABSOLUTA — EXPLOTACIÓN Y ABUSO SEXUAL INFANTIL (CSAE/CSAM):</b>{" "}
+          Se prohíbe terminantemente cualquier contenido, conducta o intento de explotación o abuso sexual
+          infantil, incluyendo material de abuso sexual infantil (CSAM), grooming, solicitud o intercambio
+          de imágenes sexuales de menores, sexualización de menores, trata con fines sexuales de menores
+          o cualquier interacción sexual con menores de edad. CuyIT eliminará contenido, suspenderá/cerrará
+          cuentas y podrá reportar a las autoridades competentes y/o colaborar preservando información
+          relevante conforme la ley.
+        </p>
+
         <p className="mt-2 text-sm text-rose-900/90">
           CuyIT podrá <b>remover contenido</b> y <b>suspender o cancelar cuentas</b> que infrinjan estas reglas.
         </p>

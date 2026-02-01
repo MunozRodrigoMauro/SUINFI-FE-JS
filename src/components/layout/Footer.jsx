@@ -248,10 +248,10 @@ const handleInicioClick = (e) => {
                 >
                   <FaInstagram />
                 </a>
-                <a href="#" className="text-gray-400 hover:text-white text-xl pointer-events-none opacity-50 cursor-not-allowed" target="_blank" rel="noreferrer" >
+                <a href="https://www.facebook.com/profile.php?id=61584119542556" className="text-gray-400 hover:text-white text-xl" target="_blank" rel="noreferrer" >
                   <FaFacebook />
                 </a>
-                <a href="#" className="text-gray-400 hover:text-white text-xl pointer-events-none opacity-50 cursor-not-allowed" target="_blank" rel="noreferrer" >
+                <a href="https://www.linkedin.com/company/cuyit/" className="text-gray-400 hover:text-white text-xl" target="_blank" rel="noreferrer" >
                   <FaLinkedin />
                 </a>
               </div>
