@@ -1,3 +1,4 @@
+//src/components/layout/Footer.jsx
 import React, { useState } from "react";
 import { FaInstagram, FaTwitter, FaLinkedin, FaChevronDown, FaFacebook, FaWhatsapp } from "react-icons/fa";
 import { useAuth } from "../../auth/AuthContext";
@@ -70,7 +71,7 @@ const handleInicioClick = (e) => {
             </button>
             <div
               className={`overflow-hidden transition-all duration-200 ${
-                expanded === "links" ? "max-h-40" : "max-h-0"
+                expanded === "links" ? "max-h-56" : "max-h-0"
               }`}
             >
               <ul className="pl-2 space-y-2 py-2">
@@ -105,6 +106,12 @@ const handleInicioClick = (e) => {
 
                 <li>
                   <a href="/faq" className="hover:text-white">Preguntas Frecuentes</a>
+                </li>
+
+                <li>
+                  <Link to="/privacy" className="hover:text-white">
+                    Política de Privacidad
+                  </Link>
                 </li>
 
                 {user && (
@@ -220,6 +227,12 @@ const handleInicioClick = (e) => {
 
                 <li>
                   <a href="/faq" className="hover:text-white">Preguntas Frecuentes</a>
+                </li>
+
+                <li>
+                  <Link to="/privacy" className="hover:text-white">
+                    Política de Privacidad
+                  </Link>
                 </li>
 
                 {user && (

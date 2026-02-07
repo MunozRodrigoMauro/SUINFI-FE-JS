@@ -1,3 +1,4 @@
+//src/components/layout/Navbar.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
@@ -194,14 +195,6 @@ function Navbar() {
                   </svg>
                 </summary>
                 <div className="absolute right-0 mt-2 w-72 bg-white text-black border rounded-xl shadow-xl overflow-hidden z-50">
-                  {/* Chat con soporte: WhatsApp (se mantiene) */}
-                  <button
-                    onClick={() => window.open(waHref, "_blank", "noopener,noreferrer")}
-                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
-                  >
-                    Chat con soporte
-                  </button>
-
                   {/* 🔵 CAMBIO: ahora navega a /terms (ya no WhatsApp) */}
                   <button
                     onClick={() => navigate("/terms")}
@@ -215,6 +208,21 @@ function Navbar() {
                     className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
                   >
                     Preguntas Frecuentes
+                  </button>
+
+                  <button
+                    onClick={() => navigate("/privacy")}
+                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
+                  >
+                    Política de Privacidad
+                  </button>
+
+                  {/* Chat con soporte: WhatsApp (se mantiene) */}
+                  <button
+                    onClick={() => window.open(waHref, "_blank", "noopener,noreferrer")}
+                    className="w-full text-left px-4 py-2 hover:bg-amber-50 hover:text-amber-700 transition-colors cursor-pointer"
+                  >
+                    Chat con soporte
                   </button>
 
                   <button

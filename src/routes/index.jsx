@@ -30,6 +30,7 @@ import ScrollToTop from "../components/common/ScrollToTop";
 import TermsPage from "../pages/TermsPage";
 import RequestServicePage from "../pages/RequestServicePage";
 import FaqPage from "../pages/FaqPage";
+import PrivacyPage from "../pages/PrivacyPage";
 
 // [CHANGE HERE] gate para que el dashboard user sólo abra si venís con ready=1
 function UserDashGate({ children }) {
@@ -62,6 +63,7 @@ function AppRoutes() {
           <Route path="/oauth/google/callback" element={<GoogleCallbackPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/faq" element={<FaqPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
         </Route>
 
         {/* Protegidas con Navbar */}
