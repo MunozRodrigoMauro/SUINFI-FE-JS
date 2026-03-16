@@ -3,65 +3,99 @@ import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { verifyEmailByToken, verifyToken as verifySession } from "../api/userService";
 
+function buildMobileVerifyUrl(token) {
+  return `cuyitmobile://verify-email?token=${encodeURIComponent(token)}`;
+}
+
 export default function VerifyEmailPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
 
-  const [status, setStatus] = useState("loading"); // loading | ok | error
+  const [status, setStatus] = useState("loading");
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
     let alive = true;
+    let appOpened = false;
 
-    const raw = params.get("token"); // viene del enlace: /verify-email?token=xxxxx(hex)
+    const raw = params.get("token");
     const token = raw ? raw.trim() : "";
 
     if (!token) {
       setStatus("error");
       setMsg("Token faltante.");
-      return;
+      return () => {
+        alive = false;
+      };
     }
 
-    (async () => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        appOpened = true;
+      }
+    };
+
+    const handlePageHide = () => {
+      appOpened = true;
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+
+    const runWebFallback = async () => {
       try {
-        // 🔒 Llamada limpia sin interceptor/JWT
         const res = await verifyEmailByToken(token);
-        if (!alive) return;
+        if (!alive || appOpened) return;
 
         setStatus("ok");
         setMsg(res?.message || "Correo verificado.");
 
-        // Redirigir suave al login
         setTimeout(() => {
-          if (alive) navigate("/login", { replace: true });
+          if (alive) {
+            navigate("/login", { replace: true });
+          }
         }, 5000);
       } catch (e) {
-        if (!alive) return;
+        if (!alive || appOpened) return;
 
-        const statusCode = e?.status || e?.response?.status || 0;
-        const serverMsg = e?.data?.message || e?.response?.data?.message || e?.message || "Error";
-
-        console.log("[VerifyEmailPage] ❌ error verificando:", statusCode, serverMsg);
-
-        // Si falla, intentamos ver si YA tiene sesión y está verificado → lo mandamos al dashboard
         try {
           const jwt = localStorage.getItem("token");
           if (jwt) {
-            const s = await verifySession(jwt);
-            if (s?.user?.verified) {
+            const session = await verifySession(jwt);
+            if (session?.user?.verified) {
               navigate("/dashboard/user", { replace: true });
               return;
             }
           }
-        } catch {/* ignore */}
+        } catch {
+          // sin acción
+        }
+
+        const serverMsg =
+          e?.data?.message ||
+          e?.response?.data?.message ||
+          e?.message ||
+          "Token inválido o vencido.";
 
         setStatus("error");
-        // mostrar el mensaje real del backend si existe
-        setMsg(serverMsg || "Token inválido o vencido.");
+        setMsg(serverMsg);
       }
-    })();
+    };
 
-    return () => { alive = false; };
+    const timerId = window.setTimeout(() => {
+      if (!appOpened) {
+        void runWebFallback();
+      }
+    }, 1200);
+
+    window.location.assign(buildMobileVerifyUrl(token));
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timerId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
   }, [navigate, params]);
 
   return (
@@ -74,7 +108,7 @@ export default function VerifyEmailPage() {
               Verificando tu correo…
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              Esperá un momento, por favor.
+              Estamos intentando abrir la app. Si no se abre, continuamos acá.
             </p>
           </>
         )}

@@ -114,6 +114,16 @@ const handleInicioClick = (e) => {
                   </Link>
                 </li>
 
+                <li>
+                  <Link
+                    to="/account-deletion"
+                    className="block py-1.5 text-sm hover:text-white"
+                  >
+                    Eliminar cuenta
+                  </Link>
+                </li>
+
+
                 {user && (
                   <li>
                     <a
@@ -126,6 +136,7 @@ const handleInicioClick = (e) => {
                       <span>Atención al cliente</span>
                     </a>
                   </li>
+                  
                 )}
               </ul>
             </div>
@@ -234,6 +245,13 @@ const handleInicioClick = (e) => {
                     Política de Privacidad
                   </Link>
                 </li>
+
+                <li>
+                  <Link to="/account-deletion" className="hover:text-white">
+                    Eliminar cuenta
+                  </Link>
+                </li>
+
 
                 {user && (
                   <li>

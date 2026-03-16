@@ -1,5 +1,5 @@
 // src/pages/ResetPasswordPage.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import BackBar from "../components/layout/BackBar";
@@ -17,6 +17,10 @@ function strengthLabel(pwd) {
   return score <= 2 ? "débil" : score === 3 ? "media" : "fuerte";
 }
 
+function buildMobileResetUrl(token) {
+  return `cuyitmobile://reset-password?token=${encodeURIComponent(token)}`;
+}
+
 export default function ResetPasswordPage() {
   const [params] = useSearchParams();
   const token = (params.get("token") || "").trim();
@@ -27,23 +31,33 @@ export default function ResetPasswordPage() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showPwd, setShowPwd] = useState(false); // 👁 CAMBIO: toggle mostrar/ocultar contraseña
+  const [showPwd, setShowPwd] = useState(false);
 
   const label = useMemo(() => strengthLabel(p1), [p1]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    window.location.assign(buildMobileResetUrl(token));
+  }, [token]);
+
   const submit = async (e) => {
     e.preventDefault();
+
     if (!token) {
       setErr("Enlace inválido.");
       return;
     }
+
     if (p1 !== p2) {
       setErr("Las contraseñas no coinciden");
       return;
     }
+
     setLoading(true);
     setMsg("");
     setErr("");
+
     try {
       await resetPasswordByToken(token, p1);
       setMsg("¡Listo! Tu contraseña fue restablecida. Ya podés iniciar sesión.");
@@ -60,6 +74,12 @@ export default function ResetPasswordPage() {
       <Navbar />
       <BackBar title="Restablecer contraseña" />
       <section className="max-w-md mx-auto px-4 pt-28 pb-16">
+        {token ? (
+          <div className="mb-4 p-3 rounded bg-slate-50 border border-slate-200 text-slate-700">
+            Estamos intentando abrir la app. Si no se abrió, podés continuar el proceso acá.
+          </div>
+        ) : null}
+
         {msg ? (
           <div className="bg-green-50 border border-green-200 text-green-700 rounded p-4">
             {msg}
@@ -76,7 +96,6 @@ export default function ResetPasswordPage() {
             )}
 
             <label className="block text-sm mb-1">Nueva contraseña</label>
-            {/* 👁 CAMBIO: wrapper relative + ojito */}
             <div className="relative mb-1">
               <input
                 className="w-full border rounded-lg px-3 py-2 pr-10"
@@ -95,7 +114,6 @@ export default function ResetPasswordPage() {
                 title={showPwd ? "Ocultar" : "Mostrar"}
               >
                 {showPwd ? (
-                  // eye-off
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
@@ -109,7 +127,6 @@ export default function ResetPasswordPage() {
                     <path d="M9.88 4.24A9.77 9.77 0 0112 4c5.52 0 9 5.5 9 8-.19.46-.43.9-.71 1.31M6.11 6.11C4.21 7.39 3 9.19 3 12c0 .74.21 1.53.57 2.3A13.3 13.3 0 0012 20a12.1 12.1 0 005.27-1.2" />
                   </svg>
                 ) : (
-                  // eye
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
@@ -132,7 +149,6 @@ export default function ResetPasswordPage() {
             <label className="block text-sm mb-1">
               Repetir nueva contraseña
             </label>
-            {/* 👁 CAMBIO: mismo patrón con ojito para repetir contraseña */}
             <div className="relative mb-4">
               <input
                 className="w-full border rounded-lg px-3 py-2 pr-10"
@@ -151,7 +167,6 @@ export default function ResetPasswordPage() {
                 title={showPwd ? "Ocultar" : "Mostrar"}
               >
                 {showPwd ? (
-                  // eye-off
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
@@ -165,7 +180,6 @@ export default function ResetPasswordPage() {
                     <path d="M9.88 4.24A9.77 9.77 0 0112 4c5.52 0 9 5.5 9 8-.19.46-.43.9-.71 1.31M6.11 6.11C4.21 7.39 3 9.19 3 12c0 .74.21 1.53.57 2.3A13.3 13.3 0 0012 20a12.1 12.1 0 005.27-1.2" />
                   </svg>
                 ) : (
-                  // eye
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
