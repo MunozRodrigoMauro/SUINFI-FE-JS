@@ -1428,8 +1428,10 @@ export default function ProfilePage() {
     ...(hasProfessional
       ? [
           { id: "sec-disponibilidad", title: "Disponibilidad", dirty: dirtyAgenda, savedAt: savedAtAgenda, done: hasSchedule },
+          /*
           { id: "sec-sena", title: "Reservas y seña", dirty: dirtyDeposit, savedAt: savedAtDeposit, done: true },
           { id: "sec-cobros", title: "Cobros", dirty: dirtyPayout, savedAt: savedAtPayout, done: !!(payout.cbu || payout.alias) },
+          */
           { id: "sec-documentos", title: "Documentos", dirty: dirtyDocs, savedAt: savedAtDocs, done: hasAnyDoc },
           { id: "sec-linkedin", title: "LinkedIn", dirty: dirtyLinkedin, savedAt: savedAtLinkedin, done: hasLinkedin },
         ]
@@ -2168,13 +2170,13 @@ export default function ProfilePage() {
             )}
   
             {/* RESERVAS Y SEÑA (pro) */}
+            {/*
             {hasProfessional && (
               <div id="sec-sena" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
               <button
                 onClick={() => setOpenDeposit((o) => !o)}
                 className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
               >
-                {/* IZQUIERDA */}
                 <div className="flex-1 min-w-0 text-left">
                   <h2 className="text-lg font-semibold leading-tight">Reservas y seña</h2>
                   <p className="text-sm text-gray-500 leading-snug truncate">
@@ -2182,7 +2184,6 @@ export default function ProfilePage() {
                   </p>
                 </div>
 
-                {/* DERECHA */}
                 <div className="ml-3 flex items-center gap-3 shrink-0">
                   {guardadoChip(dirtyDeposit, savedAtDeposit)}
                   <Chevron open={openDeposit} />
@@ -2253,15 +2254,16 @@ export default function ProfilePage() {
                 )}
               </div>
             )}
+            */}
   
             {/* COBROS / DATOS BANCARIOS (pro) */}
+            {/*
             {hasProfessional && (
               <div id="sec-cobros" className="bg-white border rounded-2xl shadow-sm mb-4 overflow-hidden">
               <button
                 onClick={() => setOpenPayout((o) => !o)}
                 className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
               >
-                {/* IZQUIERDA */}
                 <div className="flex-1 min-w-0 text-left">
                   <h2 className="text-lg font-semibold leading-tight">Cobros / Datos bancarios</h2>
                   <p className="text-sm text-gray-500 leading-snug truncate">
@@ -2269,7 +2271,6 @@ export default function ProfilePage() {
                   </p>
                 </div>
 
-                {/* DERECHA */}
                 <div className="ml-3 flex items-center gap-3 shrink-0">
                   {guardadoChip(dirtyPayout, savedAtPayout)}
                   <Chevron open={openPayout} />
@@ -2365,6 +2366,7 @@ export default function ProfilePage() {
                 )}
               </div>
             )}
+            */}
   
             {/* DOCUMENTOS (pro) */}
             {hasProfessional && (
@@ -2705,3 +2707,10 @@ export default function ProfilePage() {
     </>
   );
 }
+
+/*
+[CAMBIOS HECHOS AQUÍ]
+- Se comentaron completamente las secciones “Reservas y seña” y “Cobros / Datos bancarios”.
+- También se comentaron sus accesos en el quick nav lateral.
+- No se eliminó lógica: quedó comentada para reactivarla después.
+*/

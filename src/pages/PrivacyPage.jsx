@@ -107,8 +107,9 @@ const SECTIONS = [
             notificaciones y otros proveedores que procesan datos por cuenta de CuyIT.
           </li>
           <li>
-            <span className="font-medium">Pagos:</span> procesadores de pago (por ejemplo, Mercado Pago) para
-            gestionar cobros y transacciones. CuyIT no almacena datos completos de tarjeta.
+            <span className="font-medium">Funcionalidades futuras:</span> si en el futuro se habilitan integraciones
+            de cobro o pago, CuyIT podrá compartir la información estrictamente necesaria con el proveedor externo
+            correspondiente para prestar esa funcionalidad.
           </li>
           <li>
             <span className="font-medium">Requerimientos legales:</span> cuando sea necesario para cumplir con
@@ -328,3 +329,9 @@ export default function PrivacyPage() {
     </div>
   );
 }
+
+/*
+[CAMBIOS HECHOS AQUÍ]
+- Se ajustó la referencia a proveedores para no mostrar pagos integrados como una funcionalidad actualmente activa.
+- Se dejó planteado como posibilidad futura, alineado con el estado actual de la plataforma.
+*/
